@@ -30,10 +30,18 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(options =>
+    {
+        options.RoutePrefix = string.Empty;
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Lidessa.Api v1");
+    });
 }
-
-app.UseHttpsRedirection();
+else
+{
+    // En desarrollo no forzamos HTTPS (evita el warning cuando se corre solo
+    // con el perfil "http"); en producción sí se exige.
+    app.UseHttpsRedirection();
+}
 
 app.UseCors(FrontendCorsPolicy);
 
