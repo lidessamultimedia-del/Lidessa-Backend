@@ -345,12 +345,14 @@ CREATE TABLE dbo.BlogPost (
     Excerpt              NVARCHAR(MAX) NOT NULL DEFAULT '',
     PublishedOn          DATE NOT NULL DEFAULT CAST(SYSUTCDATETIME() AS DATE),
     ImageUrl             NVARCHAR(500) NOT NULL,
-    Author               NVARCHAR(150) NOT NULL DEFAULT '',
+    Author               NVARCHAR(150) NOT NULL DEFAULT '',  -- firma visible en el post (puede ser alguien externo, no una cuenta)
     Phone                NVARCHAR(30) NOT NULL DEFAULT '',
     ExternalLink         NVARCHAR(500) NULL,
+    CreatedByUserId       BIGINT NULL CONSTRAINT FK_BlogPost_CreatedBy REFERENCES dbo.AppUser(Id), -- admin logueado que publicó
     CreatedAt            DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 GO
+CREATE INDEX IX_BlogPost_CreatedByUserId ON dbo.BlogPost(CreatedByUserId);
 
 /* ============================================================================
    7. PQRSF
