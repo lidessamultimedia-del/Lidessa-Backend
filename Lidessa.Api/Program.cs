@@ -1,4 +1,5 @@
 using Lidessa.Api.Data;
+using Lidessa.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +13,8 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
+
+builder.Services.AddScoped<AuthService>();
 
 const string FrontendCorsPolicy = "FrontendCorsPolicy";
 builder.Services.AddCors(options =>
