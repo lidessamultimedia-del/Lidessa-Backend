@@ -10,10 +10,12 @@ public class AuthService
     private static readonly string[] AllowedRoles = { "admin", "profesor", "estudiante" };
 
     private readonly AppDbContext _db;
+    private readonly TokenService _tokenService;
 
-    public AuthService(AppDbContext db)
+    public AuthService(AppDbContext db, TokenService tokenService)
     {
         _db = db;
+        _tokenService = tokenService;
     }
 
     public async Task<(UserResponse? User, string? Error)> RegisterAsync(RegisterRequest request)
@@ -45,6 +47,29 @@ public class AuthService
         await _db.SaveChangesAsync();
 
         return (ToResponse(user), null);
+    }
+
+    public async Task<(LoginResponse? Result, string? Error)> LoginAsync(LoginRequest request)
+    {
+        var user = await _db.Users.SingleOrDefaultAsync(u => u.Email == request.Email);
+        if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        {
+            return (null, "Correo o contraseña incorrectos");
+        }
+
+        if (!user.Active)
+        {
+            return (null, "La cuenta está desactivada");
+        }
+
+        var (token, expiresAt) = _tokenService.GenerateToken(user);
+
+        return (new LoginResponse
+        {
+            Token = token,
+            ExpiresAt = expiresAt,
+            User = ToResponse(user),
+        }, null);
     }
 
     private static UserResponse ToResponse(AppUser user) => new()

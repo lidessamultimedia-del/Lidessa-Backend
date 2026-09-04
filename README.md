@@ -23,6 +23,16 @@ dotnet user-secrets set "ConnectionStrings:Default" "Server=TU_SERVIDOR\TU_INSTA
 
 Reemplaza `TU_SERVIDOR\TU_INSTANCIA` por el nombre de tu propia instancia (ej. `DESKTOP-XXXXX\SQLEXPRESS`). Esto solo se hace una vez por máquina.
 
+## 2.1. Configurar la clave del JWT
+
+El login firma tokens JWT con una clave secreta que tampoco va en el repo. Se guarda igual que la cadena de conexión:
+
+```bash
+dotnet user-secrets set "Jwt:Key" "una-clave-larga-y-aleatoria"
+```
+
+Usa cualquier cadena aleatoria de al menos 32 caracteres. Sin esto, `dotnet run` falla al arrancar con un error explicando qué falta.
+
 ## 3. Correr el proyecto
 
 ```bash

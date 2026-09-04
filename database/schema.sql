@@ -46,7 +46,7 @@ GO
 
 CREATE TABLE dbo.AppUser (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,          -- ids viejos tipo '1','t1','s1' (solo migración)
+    LegacyId             NVARCHAR(40) NULL,                 -- ids viejos tipo '1','t1','s1' (solo migración)
     Name                 NVARCHAR(150) NOT NULL,
     Email                NVARCHAR(256) NOT NULL,
     PasswordHash         NVARCHAR(256) NOT NULL,
@@ -60,6 +60,12 @@ CREATE TABLE dbo.AppUser (
     UpdatedAt            DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT UQ_AppUser_Email UNIQUE (Email)
 );
+GO
+
+-- Único solo entre los valores reales (no NULL): un UNIQUE normal en SQL
+-- Server solo admite una fila con NULL, y casi todas las filas nuevas creadas
+-- por la API tienen LegacyId NULL (ver comentario arriba).
+CREATE UNIQUE INDEX UQ_AppUser_LegacyId ON dbo.AppUser(LegacyId) WHERE LegacyId IS NOT NULL;
 GO
 
 -- Sesiones reales (reemplaza el sessionStorage actual). Un token por login.

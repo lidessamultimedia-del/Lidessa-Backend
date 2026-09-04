@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using Lidessa.Api.Dtos.Auth;
 using Lidessa.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lidessa.Api.Controllers;
@@ -25,5 +27,30 @@ public class AuthController : ControllerBase
         }
 
         return CreatedAtAction(nameof(Register), new { id = user!.Id }, user);
+    }
+
+    [HttpPost("login")]
+    public async Task<IActionResult> Login(LoginRequest request)
+    {
+        var (result, error) = await _authService.LoginAsync(request);
+        if (error is not null)
+        {
+            return Unauthorized(new { message = error });
+        }
+
+        return Ok(result);
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    public IActionResult Me()
+    {
+        return Ok(new
+        {
+            id = User.FindFirstValue(ClaimTypes.NameIdentifier),
+            name = User.FindFirstValue(ClaimTypes.Name),
+            email = User.FindFirstValue(ClaimTypes.Email),
+            role = User.FindFirstValue(ClaimTypes.Role),
+        });
     }
 }
