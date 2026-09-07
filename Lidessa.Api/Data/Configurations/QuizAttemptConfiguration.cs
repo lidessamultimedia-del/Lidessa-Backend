@@ -17,7 +17,7 @@ public class QuizAttemptConfiguration : IEntityTypeConfiguration<QuizAttempt>
         b.HasKey(x => x.Id);
 
         b.Property(x => x.LegacyId).HasMaxLength(40);
-        b.HasIndex(x => x.LegacyId).IsUnique();
+        b.HasIndex(x => x.LegacyId).IsUnique().HasFilter("[LegacyId] IS NOT NULL");
 
         b.Property(x => x.AnswersJson).IsRequired();
         b.Property(x => x.Score).HasPrecision(4, 1);

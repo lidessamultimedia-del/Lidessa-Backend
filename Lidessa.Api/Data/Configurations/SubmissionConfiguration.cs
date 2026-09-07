@@ -17,7 +17,7 @@ public class SubmissionConfiguration : IEntityTypeConfiguration<Submission>
         b.HasKey(x => x.Id);
 
         b.Property(x => x.LegacyId).HasMaxLength(40);
-        b.HasIndex(x => x.LegacyId).IsUnique();
+        b.HasIndex(x => x.LegacyId).IsUnique().HasFilter("[LegacyId] IS NOT NULL");
 
         b.Property(x => x.AttachmentFileName).HasMaxLength(260);
         b.Property(x => x.AttachmentUrl).HasMaxLength(500);

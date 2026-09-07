@@ -12,7 +12,7 @@ public class BlogPostConfiguration : IEntityTypeConfiguration<BlogPost>
         b.HasKey(x => x.Id);
 
         b.Property(x => x.LegacyId).HasMaxLength(40);
-        b.HasIndex(x => x.LegacyId).IsUnique();
+        b.HasIndex(x => x.LegacyId).IsUnique().HasFilter("[LegacyId] IS NOT NULL");
 
         b.Property(x => x.Title).HasMaxLength(200).IsRequired();
         b.Property(x => x.Excerpt).IsRequired().HasDefaultValue("");
