@@ -53,4 +53,50 @@ public class AuthController : ControllerBase
             role = User.FindFirstValue(ClaimTypes.Role),
         });
     }
+
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh(RefreshTokenRequest request)
+    {
+        var (result, error) = await _authService.RefreshAsync(request);
+        if (error is not null)
+        {
+            return Unauthorized(new { message = error });
+        }
+
+        return Ok(result);
+    }
+
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(RefreshTokenRequest request)
+    {
+        await _authService.LogoutAsync(request);
+        return NoContent();
+    }
+
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request)
+    {
+        var code = await _authService.ForgotPasswordAsync(request);
+        // Respuesta genérica siempre, exista o no la cuenta, para no filtrar
+        // qué correos están registrados. El código solo se expone en el
+        // cuerpo mientras no exista envío de correo real (ver TODO en el
+        // servicio) — en producción esto se debe quitar.
+        return Ok(new
+        {
+            message = "Si el correo existe, se generó un código de recuperación",
+            devCode = code,
+        });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request)
+    {
+        var error = await _authService.ResetPasswordAsync(request);
+        if (error is not null)
+        {
+            return BadRequest(new { message = error });
+        }
+
+        return NoContent();
+    }
 }

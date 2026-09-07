@@ -12,7 +12,7 @@ public class CertificationConfiguration : IEntityTypeConfiguration<Certification
         b.HasKey(x => x.Id);
 
         b.Property(x => x.LegacyId).HasMaxLength(40);
-        b.HasIndex(x => x.LegacyId).IsUnique();
+        b.HasIndex(x => x.LegacyId).IsUnique().HasFilter("[LegacyId] IS NOT NULL");
 
         b.Property(x => x.MarkedAt).HasDefaultValueSql("SYSUTCDATETIME()");
 

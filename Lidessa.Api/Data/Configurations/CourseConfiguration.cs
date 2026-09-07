@@ -19,7 +19,7 @@ public class CourseConfiguration : IEntityTypeConfiguration<Course>
         b.HasKey(x => x.Id);
 
         b.Property(x => x.LegacyId).HasMaxLength(40);
-        b.HasIndex(x => x.LegacyId).IsUnique();
+        b.HasIndex(x => x.LegacyId).IsUnique().HasFilter("[LegacyId] IS NOT NULL");
 
         b.Property(x => x.Name).HasMaxLength(200).IsRequired();
         b.Property(x => x.ShortName).HasMaxLength(50).IsRequired().HasDefaultValue("");

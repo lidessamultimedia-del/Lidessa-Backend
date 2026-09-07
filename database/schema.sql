@@ -118,7 +118,7 @@ GO
 
 CREATE TABLE dbo.Course (
     Id                       BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId                 NVARCHAR(40) NULL UNIQUE,
+    LegacyId                 NVARCHAR(40) NULL,
     Name                     NVARCHAR(200) NOT NULL,
     ShortName                NVARCHAR(50)  NOT NULL DEFAULT '',
     Description              NVARCHAR(MAX) NOT NULL DEFAULT '',
@@ -152,6 +152,9 @@ CREATE TABLE dbo.Course (
     UpdatedAt                DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 GO
+CREATE UNIQUE INDEX UQ_Course_LegacyId ON dbo.Course(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_Course_TeacherId ON dbo.Course(TeacherId);
 
 CREATE TABLE dbo.CourseEnrollment (
@@ -164,17 +167,20 @@ GO
 
 CREATE TABLE dbo.Topic (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     CourseId             BIGINT NOT NULL CONSTRAINT FK_Topic_Course REFERENCES dbo.Course(Id) ON DELETE CASCADE,
     Title                NVARCHAR(200) NOT NULL,
     SortOrder            INT NOT NULL DEFAULT 0
 );
 GO
+CREATE UNIQUE INDEX UQ_Topic_LegacyId ON dbo.Topic(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_Topic_CourseId ON dbo.Topic(CourseId);
 
 CREATE TABLE dbo.Lesson (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     CourseId             BIGINT NOT NULL CONSTRAINT FK_Lesson_Course REFERENCES dbo.Course(Id) ON DELETE CASCADE,
     TopicId              BIGINT NULL CONSTRAINT FK_Lesson_Topic REFERENCES dbo.Topic(Id),
     Title                NVARCHAR(200) NOT NULL,
@@ -186,6 +192,9 @@ CREATE TABLE dbo.Lesson (
     AttachmentSizeBytes  BIGINT NULL
 );
 GO
+CREATE UNIQUE INDEX UQ_Lesson_LegacyId ON dbo.Lesson(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_Lesson_CourseId ON dbo.Lesson(CourseId);
 CREATE INDEX IX_Lesson_TopicId ON dbo.Lesson(TopicId);
 
@@ -195,7 +204,7 @@ CREATE INDEX IX_Lesson_TopicId ON dbo.Lesson(TopicId);
 
 CREATE TABLE dbo.Assignment (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     CourseId             BIGINT NOT NULL CONSTRAINT FK_Assignment_Course REFERENCES dbo.Course(Id) ON DELETE CASCADE,
     TopicId              BIGINT NULL CONSTRAINT FK_Assignment_Topic REFERENCES dbo.Topic(Id),
     Title                NVARCHAR(200) NOT NULL,
@@ -208,6 +217,9 @@ CREATE TABLE dbo.Assignment (
     AttachmentSizeBytes  BIGINT NULL
 );
 GO
+CREATE UNIQUE INDEX UQ_Assignment_LegacyId ON dbo.Assignment(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_Assignment_CourseId ON dbo.Assignment(CourseId);
 
 -- Vacío = para todo el curso. Con filas = solo para esos estudiantes.
@@ -220,7 +232,7 @@ GO
 
 CREATE TABLE dbo.Submission (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     AssignmentId         BIGINT NOT NULL CONSTRAINT FK_Submission_Assignment REFERENCES dbo.Assignment(Id) ON DELETE CASCADE,
     StudentId            BIGINT NOT NULL CONSTRAINT FK_Submission_Student REFERENCES dbo.AppUser(Id),
     AttachmentFileName   NVARCHAR(260) NULL,
@@ -239,6 +251,9 @@ CREATE TABLE dbo.Submission (
     CONSTRAINT UQ_Submission_Assignment_Student UNIQUE (AssignmentId, StudentId)
 );
 GO
+CREATE UNIQUE INDEX UQ_Submission_LegacyId ON dbo.Submission(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_Submission_StudentId ON dbo.Submission(StudentId);
 
 /* ============================================================================
@@ -247,7 +262,7 @@ CREATE INDEX IX_Submission_StudentId ON dbo.Submission(StudentId);
 
 CREATE TABLE dbo.Quiz (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     CourseId             BIGINT NOT NULL CONSTRAINT FK_Quiz_Course REFERENCES dbo.Course(Id) ON DELETE CASCADE,
     TopicId              BIGINT NULL CONSTRAINT FK_Quiz_Topic REFERENCES dbo.Topic(Id),
     Title                NVARCHAR(200) NOT NULL,
@@ -258,11 +273,14 @@ CREATE TABLE dbo.Quiz (
     SortOrder            INT NOT NULL DEFAULT 0
 );
 GO
+CREATE UNIQUE INDEX UQ_Quiz_LegacyId ON dbo.Quiz(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_Quiz_CourseId ON dbo.Quiz(CourseId);
 
 CREATE TABLE dbo.QuizQuestion (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     QuizId               BIGINT NOT NULL CONSTRAINT FK_QuizQuestion_Quiz REFERENCES dbo.Quiz(Id) ON DELETE CASCADE,
     SortOrder            INT NOT NULL DEFAULT 0,
     QuestionType         NVARCHAR(20) NOT NULL DEFAULT 'multiple'
@@ -273,6 +291,9 @@ CREATE TABLE dbo.QuizQuestion (
     CorrectIndex         INT NULL                           -- índice dentro de OptionsJson; NULL si es 'open'
 );
 GO
+CREATE UNIQUE INDEX UQ_QuizQuestion_LegacyId ON dbo.QuizQuestion(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_QuizQuestion_QuizId ON dbo.QuizQuestion(QuizId);
 
 CREATE TABLE dbo.QuizAssignee (
@@ -284,7 +305,7 @@ GO
 
 CREATE TABLE dbo.QuizAttempt (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     QuizId               BIGINT NOT NULL CONSTRAINT FK_QuizAttempt_Quiz REFERENCES dbo.Quiz(Id) ON DELETE CASCADE,
     StudentId            BIGINT NOT NULL CONSTRAINT FK_QuizAttempt_Student REFERENCES dbo.AppUser(Id),
     AnswersJson          NVARCHAR(MAX) NOT NULL              -- array alineado por índice con QuizQuestion.SortOrder
@@ -301,6 +322,9 @@ CREATE TABLE dbo.QuizAttempt (
     -- intentos, quitar este UNIQUE y agregar AttemptNumber.
 );
 GO
+CREATE UNIQUE INDEX UQ_QuizAttempt_LegacyId ON dbo.QuizAttempt(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_QuizAttempt_StudentId ON dbo.QuizAttempt(StudentId);
 
 CREATE TABLE dbo.LessonProgress (
@@ -318,7 +342,7 @@ GO
 
 CREATE TABLE dbo.Message (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     CourseId             BIGINT NOT NULL CONSTRAINT FK_Message_Course REFERENCES dbo.Course(Id) ON DELETE CASCADE,
     FromUserId           BIGINT NOT NULL CONSTRAINT FK_Message_From REFERENCES dbo.AppUser(Id),
     ToUserId             BIGINT NOT NULL CONSTRAINT FK_Message_To REFERENCES dbo.AppUser(Id),
@@ -327,18 +351,24 @@ CREATE TABLE dbo.Message (
     IsRead               BIT NOT NULL DEFAULT 0
 );
 GO
+CREATE UNIQUE INDEX UQ_Message_LegacyId ON dbo.Message(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_Message_Thread ON dbo.Message(CourseId, FromUserId, ToUserId);
 CREATE INDEX IX_Message_ToUserId ON dbo.Message(ToUserId);
 
 CREATE TABLE dbo.Certification (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     StudentId            BIGINT NOT NULL CONSTRAINT FK_Certification_Student REFERENCES dbo.AppUser(Id),
     CourseId             BIGINT NOT NULL CONSTRAINT FK_Certification_Course REFERENCES dbo.Course(Id) ON DELETE CASCADE,
     MarkedAt             DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT UQ_Certification_Student_Course UNIQUE (StudentId, CourseId)
 );
 GO
+CREATE UNIQUE INDEX UQ_Certification_LegacyId ON dbo.Certification(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 
 /* ============================================================================
    6. BLOG / CONVERGE
@@ -346,7 +376,7 @@ GO
 
 CREATE TABLE dbo.BlogPost (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
-    LegacyId             NVARCHAR(40) NULL UNIQUE,
+    LegacyId             NVARCHAR(40) NULL,
     Title                NVARCHAR(200) NOT NULL,
     Excerpt              NVARCHAR(MAX) NOT NULL DEFAULT '',
     PublishedOn          DATE NOT NULL DEFAULT CAST(SYSUTCDATETIME() AS DATE),
@@ -358,6 +388,9 @@ CREATE TABLE dbo.BlogPost (
     CreatedAt            DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 GO
+CREATE UNIQUE INDEX UQ_BlogPost_LegacyId ON dbo.BlogPost(LegacyId) WHERE LegacyId IS NOT NULL;
+GO
+
 CREATE INDEX IX_BlogPost_CreatedByUserId ON dbo.BlogPost(CreatedByUserId);
 
 /* ============================================================================

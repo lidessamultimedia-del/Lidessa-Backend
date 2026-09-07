@@ -17,7 +17,7 @@ public class QuizQuestionConfiguration : IEntityTypeConfiguration<QuizQuestion>
         b.HasKey(x => x.Id);
 
         b.Property(x => x.LegacyId).HasMaxLength(40);
-        b.HasIndex(x => x.LegacyId).IsUnique();
+        b.HasIndex(x => x.LegacyId).IsUnique().HasFilter("[LegacyId] IS NOT NULL");
 
         b.Property(x => x.SortOrder).HasDefaultValue(0);
         b.Property(x => x.QuestionType).HasMaxLength(20).IsRequired().HasDefaultValue("multiple");
