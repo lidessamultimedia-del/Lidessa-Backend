@@ -6,6 +6,11 @@
 # dotenv files
 .env
 
+# Contenido subido por usuarios (avatares, etc.) — se genera en runtime,
+# no es parte del código fuente.
+Lidessa.Api/wwwroot/uploads/avatars/*
+!Lidessa.Api/wwwroot/uploads/avatars/.gitkeep
+
 # User-specific files
 *.rsuser
 *.suo

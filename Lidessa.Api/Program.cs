@@ -19,6 +19,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TokenService>();
+builder.Services.AddScoped<DocumentTypeService>();
+builder.Services.AddScoped<PersonProfileService>();
+builder.Services.AddScoped<AvatarService>();
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
@@ -78,6 +81,8 @@ else
     // con el perfil "http"); en producción sí se exige.
     app.UseHttpsRedirection();
 }
+
+app.UseStaticFiles();
 
 app.UseCors(FrontendCorsPolicy);
 
