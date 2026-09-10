@@ -21,6 +21,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<DocumentTypeService>();
 builder.Services.AddScoped<PersonProfileService>();
+builder.Services.AddScoped<CourseService>();
 builder.Services.AddScoped<AvatarService>();
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
