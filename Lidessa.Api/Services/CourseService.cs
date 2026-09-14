@@ -11,6 +11,8 @@ public class CourseService
     private static readonly string[] AllowedFormats = { "topics", "weekly" };
     private static readonly Regex ShortNamePattern = new("^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$", RegexOptions.Compiled);
     private const int PasswordMinLength = 6;
+    private const int MinActivitiesToPublish = 3;
+    private const int MinExamsToPublish = 1;
 
     private readonly AppDbContext _db;
 
@@ -37,12 +39,55 @@ public class CourseService
         return entity is null ? null : ToResponse(entity);
     }
 
+    // Calcado de courseMissingForPublish del frontend: lista en español lo que
+    // le falta al curso para poder publicarse (lista vacía = ya puede).
+    public async Task<List<string>> GetMissingForPublishAsync(long courseId)
+    {
+        var teacherId = await _db.Courses.Where(c => c.Id == courseId).Select(c => c.TeacherId).SingleOrDefaultAsync();
+        var activitiesCount = await _db.Assignments.CountAsync(a => a.CourseId == courseId);
+        var examsCount = await _db.Quizzes.CountAsync(q => q.CourseId == courseId);
+
+        return BuildMissingForPublish(teacherId is not null, activitiesCount, examsCount);
+    }
+
+    private static List<string> BuildMissingForPublish(bool hasTeacher, int activitiesCount, int examsCount)
+    {
+        var missing = new List<string>();
+
+        if (!hasTeacher)
+        {
+            missing.Add("Asignar un profesor al curso");
+        }
+
+        if (activitiesCount < MinActivitiesToPublish)
+        {
+            missing.Add($"Agregar al menos {MinActivitiesToPublish} actividades (tiene {activitiesCount})");
+        }
+
+        if (examsCount < MinExamsToPublish)
+        {
+            missing.Add($"Agregar al menos {MinExamsToPublish} examen (tiene {examsCount})");
+        }
+
+        return missing;
+    }
+
     public async Task<(CourseResponse? Result, string? Error)> CreateAsync(CourseRequest request)
     {
         var error = await ValidateAsync(request, courseId: null);
         if (error is not null)
         {
             return (null, error);
+        }
+
+        if (request.Published)
+        {
+            // Un curso recién creado nunca tiene actividades/exámenes todavía.
+            var missing = BuildMissingForPublish(request.TeacherId is not null, activitiesCount: 0, examsCount: 0);
+            if (missing.Count > 0)
+            {
+                return (null, $"No se puede publicar el curso: {string.Join("; ", missing)}");
+            }
         }
 
         var entity = new Course
@@ -83,6 +128,20 @@ public class CourseService
         if (error is not null)
         {
             return (null, error);
+        }
+
+        if (request.Published && !entity.Published)
+        {
+            // Se usa request.TeacherId (no el de la entidad todavía sin
+            // actualizar) para permitir asignar profesor y publicar en el
+            // mismo request.
+            var activitiesCount = await _db.Assignments.CountAsync(a => a.CourseId == id);
+            var examsCount = await _db.Quizzes.CountAsync(q => q.CourseId == id);
+            var missing = BuildMissingForPublish(request.TeacherId is not null, activitiesCount, examsCount);
+            if (missing.Count > 0)
+            {
+                return (null, $"No se puede publicar el curso: {string.Join("; ", missing)}");
+            }
         }
 
         entity.Name = request.Name.Trim();
