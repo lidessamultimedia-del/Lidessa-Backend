@@ -23,6 +23,7 @@ builder.Services.AddScoped<DocumentTypeService>();
 builder.Services.AddScoped<PersonProfileService>();
 builder.Services.AddScoped<CourseService>();
 builder.Services.AddScoped<AvatarService>();
+builder.Services.AddScoped<AttachmentService>();
 builder.Services.AddScoped<TopicService>();
 builder.Services.AddScoped<LessonService>();
 builder.Services.AddScoped<CourseEnrollmentService>();

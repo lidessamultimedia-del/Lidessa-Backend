@@ -32,6 +32,19 @@ public class CoursesController : ControllerBase
     }
 
     [Authorize(Roles = "admin")]
+    [HttpGet("{id:long}/missing-for-publish")]
+    public async Task<IActionResult> GetMissingForPublish(long id)
+    {
+        if (await _service.GetByIdAsync(id) is null)
+        {
+            return NotFound(new { message = "Curso no encontrado" });
+        }
+
+        var missing = await _service.GetMissingForPublishAsync(id);
+        return Ok(new CourseMissingForPublishResponse { CanPublish = missing.Count == 0, Missing = missing });
+    }
+
+    [Authorize(Roles = "admin")]
     [HttpPost]
     public async Task<IActionResult> Create(CourseRequest request)
     {

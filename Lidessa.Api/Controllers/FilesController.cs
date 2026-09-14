@@ -11,10 +11,12 @@ namespace Lidessa.Api.Controllers;
 public class FilesController : ControllerBase
 {
     private readonly AvatarService _avatarService;
+    private readonly AttachmentService _attachmentService;
 
-    public FilesController(AvatarService avatarService)
+    public FilesController(AvatarService avatarService, AttachmentService attachmentService)
     {
         _avatarService = avatarService;
+        _attachmentService = attachmentService;
     }
 
     [HttpPost("avatar")]
@@ -23,6 +25,22 @@ public class FilesController : ControllerBase
     {
         var userId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var (result, error) = await _avatarService.UploadAvatarAsync(userId, file);
+        if (error is not null)
+        {
+            return BadRequest(new { message = error });
+        }
+
+        return Ok(result);
+    }
+
+    // Endpoint genérico de adjuntos: lo usa el material de lección y sirve
+    // igual para futuros adjuntos (tareas, etc.) sin duplicar el controlador.
+    [Authorize(Roles = "admin,profesor")]
+    [HttpPost("attachments")]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<IActionResult> UploadAttachment(IFormFile file)
+    {
+        var (result, error) = await _attachmentService.UploadAsync(file);
         if (error is not null)
         {
             return BadRequest(new { message = error });
