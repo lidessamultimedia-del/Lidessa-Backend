@@ -23,6 +23,14 @@ public class CoursesController : ControllerBase
         return Ok(await _service.GetAllAsync());
     }
 
+    // Catálogo público de CEET — sin login, solo cursos listados y publicados.
+    [AllowAnonymous]
+    [HttpGet("catalog")]
+    public async Task<IActionResult> GetCatalog()
+    {
+        return Ok(await _service.GetCatalogAsync());
+    }
+
     [Authorize]
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
