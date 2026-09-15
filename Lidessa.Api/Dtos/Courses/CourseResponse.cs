@@ -17,6 +17,7 @@ public class CourseResponse
     public bool SelfEnrollment { get; set; }
     public bool GuestAccess { get; set; }
     public bool Published { get; set; }
+    public bool Listed { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

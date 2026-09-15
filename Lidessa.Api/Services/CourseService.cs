@@ -39,6 +39,20 @@ public class CourseService
         return entity is null ? null : ToResponse(entity);
     }
 
+    // Catálogo público de CEET: mismo filtro que `publicCourses` en LMSContext
+    // del frontend (listed Y published) — no basta con Listed solo, porque un
+    // curso puede estar listado en la administración de CEET sin haberse
+    // publicado todavía en el LMS, y ese borrador no debe verse sin loguearse.
+    public async Task<List<CourseResponse>> GetCatalogAsync()
+    {
+        return await _db.Courses
+            .Include(c => c.Teacher)
+            .Where(c => c.Listed && c.Published)
+            .OrderBy(c => c.Name)
+            .Select(c => ToResponse(c))
+            .ToListAsync();
+    }
+
     // Calcado de courseMissingForPublish del frontend: lista en español lo que
     // le falta al curso para poder publicarse (lista vacía = ya puede).
     public async Task<List<string>> GetMissingForPublishAsync(long courseId)
@@ -142,6 +156,10 @@ public class CourseService
             {
                 return (null, $"No se puede publicar el curso: {string.Join("; ", missing)}");
             }
+
+            // Igual que PublishCourseModal en el frontend: publicar tambien
+            // marca el curso como listado en el catalogo publico de CEET.
+            entity.Listed = true;
         }
 
         entity.Name = request.Name.Trim();
@@ -258,6 +276,7 @@ public class CourseService
         SelfEnrollment = c.SelfEnrollment,
         GuestAccess = c.GuestAccess,
         Published = c.Published,
+        Listed = c.Listed,
         CreatedAt = c.CreatedAt,
         UpdatedAt = c.UpdatedAt,
     };
