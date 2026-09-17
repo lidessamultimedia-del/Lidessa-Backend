@@ -27,6 +27,7 @@ builder.Services.AddScoped<AttachmentService>();
 builder.Services.AddScoped<TopicService>();
 builder.Services.AddScoped<LessonService>();
 builder.Services.AddScoped<CourseEnrollmentService>();
+builder.Services.AddScoped<AssignmentService>();
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
