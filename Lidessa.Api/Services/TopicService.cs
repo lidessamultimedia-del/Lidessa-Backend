@@ -24,6 +24,39 @@ public class TopicService
         return await _db.Courses.AnyAsync(c => c.Id == courseId);
     }
 
+    // Quién puede LEER el contenido de un curso (detalle, temas, lecciones):
+    // admin siempre; el profesor dueño siempre; cualquier estudiante
+    // inscrito (sin importar si el curso sigue publicado, igual que
+    // coursesByStudent en el frontend no deja de mostrar un curso solo
+    // porque se despublicó); y cualquier otro logueado únicamente si el
+    // curso ya es público (Listed && Published, mismo criterio del
+    // catálogo de CEET). Cualquier otro caso queda bloqueado.
+    public async Task<bool> CanReadCourseAsync(long courseId, long userId, bool isAdmin)
+    {
+        if (isAdmin)
+        {
+            return true;
+        }
+
+        var course = await _db.Courses.SingleOrDefaultAsync(c => c.Id == courseId);
+        if (course is null)
+        {
+            return false;
+        }
+
+        if (course.TeacherId == userId)
+        {
+            return true;
+        }
+
+        if (course.Listed && course.Published)
+        {
+            return true;
+        }
+
+        return await _db.CourseEnrollments.AnyAsync(e => e.CourseId == courseId && e.StudentId == userId);
+    }
+
     public async Task<long?> GetTopicCourseIdAsync(long topicId)
     {
         var courseId = await _db.Topics.Where(t => t.Id == topicId).Select(t => (long?)t.CourseId).SingleOrDefaultAsync();

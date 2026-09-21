@@ -19,6 +19,14 @@ public class SubmissionService
         return await _db.Assignments.Where(a => a.Id == assignmentId).Select(a => (long?)a.CourseId).SingleOrDefaultAsync();
     }
 
+    public async Task<long?> GetSubmissionCourseIdAsync(long submissionId)
+    {
+        return await _db.Submissions
+            .Where(s => s.Id == submissionId)
+            .Select(s => (long?)s.Assignment.CourseId)
+            .SingleOrDefaultAsync();
+    }
+
     public async Task<bool> IsAssignedAsync(long assignmentId, long courseId, long studentId)
     {
         var enrolled = await _db.CourseEnrollments.AnyAsync(e => e.CourseId == courseId && e.StudentId == studentId);
@@ -86,6 +94,34 @@ public class SubmissionService
         {
             entity.Status = "draft";
         }
+
+        await _db.SaveChangesAsync();
+
+        return (ToResponse(entity), null);
+    }
+
+    // Calificar: solo aplica sobre una entrega ya "submitted" (calcado de como
+    // TeacherDashboard/CourseGradingQueue solo ofrecen calificar lo que viene
+    // de submissionsPendingForTeacher, que filtra por status === 'submitted').
+    public async Task<(SubmissionResponse? Result, string? Error)> GradeAsync(long submissionId, GradeSubmissionRequest request)
+    {
+        var entity = await _db.Submissions.FindAsync(submissionId);
+        if (entity is null)
+        {
+            return (null, "Entrega no encontrada");
+        }
+
+        if (entity.Status != "submitted")
+        {
+            return (null, "Solo se puede calificar una entrega que ya fue entregada");
+        }
+
+        entity.Grade = request.Grade;
+        entity.Feedback = request.Feedback ?? string.Empty;
+        entity.Status = "graded";
+        entity.GradedAt = DateTime.UtcNow;
+        entity.RetryAllowed = request.RetryAllowed;
+        entity.Seen = false;
 
         await _db.SaveChangesAsync();
 

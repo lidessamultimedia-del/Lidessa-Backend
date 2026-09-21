@@ -25,14 +25,43 @@ public class TopicsController : ControllerBase
             return NotFound(new { message = "Curso no encontrado" });
         }
 
+        var forbidden = await CheckReadAccessAsync(courseId);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         return Ok(await _service.GetAllByCourseAsync(courseId));
     }
 
     [HttpGet("api/topics/{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {
+        var courseId = await _service.GetTopicCourseIdAsync(id);
+        if (courseId is null)
+        {
+            return NotFound(new { message = "Tema no encontrado" });
+        }
+
+        var forbidden = await CheckReadAccessAsync(courseId.Value);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var result = await _service.GetByIdAsync(id);
         return result is null ? NotFound(new { message = "Tema no encontrado" }) : Ok(result);
+    }
+
+    private async Task<IActionResult?> CheckReadAccessAsync(long courseId)
+    {
+        var userId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (!await _service.CanReadCourseAsync(courseId, userId, User.IsInRole("admin")))
+        {
+            return Forbid();
+        }
+
+        return null;
     }
 
     [Authorize(Roles = "admin,profesor")]
