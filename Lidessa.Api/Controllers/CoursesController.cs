@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Lidessa.Api.Dtos.Courses;
 using Lidessa.Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -10,10 +11,12 @@ namespace Lidessa.Api.Controllers;
 public class CoursesController : ControllerBase
 {
     private readonly CourseService _service;
+    private readonly TopicService _topicService;
 
-    public CoursesController(CourseService service)
+    public CoursesController(CourseService service, TopicService topicService)
     {
         _service = service;
+        _topicService = topicService;
     }
 
     [Authorize]
@@ -36,7 +39,18 @@ public class CoursesController : ControllerBase
     public async Task<IActionResult> GetById(long id)
     {
         var result = await _service.GetByIdAsync(id);
-        return result is null ? NotFound(new { message = "Curso no encontrado" }) : Ok(result);
+        if (result is null)
+        {
+            return NotFound(new { message = "Curso no encontrado" });
+        }
+
+        var userId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (!await _topicService.CanReadCourseAsync(id, userId, User.IsInRole("admin")))
+        {
+            return Forbid();
+        }
+
+        return Ok(result);
     }
 
     [Authorize(Roles = "admin")]
