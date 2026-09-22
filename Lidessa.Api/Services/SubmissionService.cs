@@ -128,6 +128,26 @@ public class SubmissionService
         return (ToResponse(entity), null);
     }
 
+    // El estudiante marca como "visto" el resultado (calificación/feedback)
+    // de su propia entrega. Filtrar por studentId hace de chequeo de
+    // pertenencia, igual que GetMineAsync.
+    public async Task<SubmissionResponse?> MarkSeenAsync(long submissionId, long studentId)
+    {
+        var entity = await _db.Submissions.SingleOrDefaultAsync(s => s.Id == submissionId && s.StudentId == studentId);
+        if (entity is null)
+        {
+            return null;
+        }
+
+        if (!entity.Seen)
+        {
+            entity.Seen = true;
+            await _db.SaveChangesAsync();
+        }
+
+        return ToResponse(entity);
+    }
+
     private static string? ValidateTransition(Submission entity, bool submit)
     {
         if (entity.Status == "graded" && !entity.RetryAllowed)
@@ -159,5 +179,6 @@ public class SubmissionService
         Feedback = s.Feedback,
         GradedAt = s.GradedAt,
         RetryAllowed = s.RetryAllowed,
+        Seen = s.Seen,
     };
 }

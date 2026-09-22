@@ -16,4 +16,5 @@ public class SubmissionResponse
     public string Feedback { get; set; } = string.Empty;
     public DateTime? GradedAt { get; set; }
     public bool RetryAllowed { get; set; }
+    public bool Seen { get; set; }
 }

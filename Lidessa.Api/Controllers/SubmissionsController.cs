@@ -52,6 +52,14 @@ public class SubmissionsController : ControllerBase
         return Ok(result);
     }
 
+    [Authorize(Roles = "estudiante")]
+    [HttpPut("api/submissions/{id:long}/seen")]
+    public async Task<IActionResult> MarkSeen(long id)
+    {
+        var result = await _service.MarkSeenAsync(id, CurrentStudentId());
+        return result is null ? NotFound(new { message = "Entrega no encontrada" }) : Ok(result);
+    }
+
     [Authorize(Roles = "admin,profesor")]
     [HttpPut("api/submissions/{id:long}/grade")]
     public async Task<IActionResult> Grade(long id, GradeSubmissionRequest request)
