@@ -9,7 +9,7 @@ API en ASP.NET Core (C#) + Entity Framework Core + SQL Server para la plataforma
 
 ## 1. Crear la base de datos
 
-Abre SQL Server Management Studio (o Azure Data Studio), conéctate a tu instancia local, y ejecuta todo el contenido de [`database/schema.sql`](database/schema.sql). Eso crea `LidessaDB` con las 24 tablas.
+Abre SQL Server Management Studio (o Azure Data Studio), conéctate a tu instancia local, y ejecuta todo el contenido de [`database/schema.sql`](database/schema.sql). Eso crea `LidessaDB` con las 25 tablas. Si ya tenías la base creada, corre en su lugar los scripts de [`database/migrations/`](database/migrations/) que no hayas aplicado.
 
 ## 2. Configurar la cadena de conexión
 
