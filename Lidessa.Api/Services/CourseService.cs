@@ -30,6 +30,58 @@ public class CourseService
             .ToListAsync();
     }
 
+    // Cursos con los que trabaja el usuario en el LMS: el admin ve todos, el
+    // profesor los suyos y el estudiante aquellos en los que está inscrito.
+    public async Task<List<MyCourseResponse>> GetMineAsync(long userId, string role)
+    {
+        var query = _db.Courses.Include(c => c.Teacher).AsQueryable();
+        query = role switch
+        {
+            "admin" => query,
+            "profesor" => query.Where(c => c.TeacherId == userId),
+            _ => query.Where(c => c.Enrollments.Any(e => e.StudentId == userId)),
+        };
+
+        var courses = await query.OrderBy(c => c.Name).ToListAsync();
+        var courseIds = courses.Select(c => c.Id).ToList();
+
+        var enrollments = await _db.CourseEnrollments
+            .Where(e => courseIds.Contains(e.CourseId))
+            .Where(e => role == "admin" || role == "profesor" || e.StudentId == userId)
+            .Select(e => new { e.CourseId, e.StudentId, e.Student.Name, e.Student.Email })
+            .ToListAsync();
+
+        return courses.Select(c =>
+        {
+            var baseResponse = ToResponse(c);
+            return new MyCourseResponse
+            {
+                Id = baseResponse.Id,
+                Name = baseResponse.Name,
+                ShortName = baseResponse.ShortName,
+                Description = baseResponse.Description,
+                Category = baseResponse.Category,
+                TeacherId = baseResponse.TeacherId,
+                TeacherName = baseResponse.TeacherName,
+                Format = baseResponse.Format,
+                Capacity = baseResponse.Capacity,
+                Color = baseResponse.Color,
+                Image = baseResponse.Image,
+                RequiresPassword = baseResponse.RequiresPassword,
+                SelfEnrollment = baseResponse.SelfEnrollment,
+                GuestAccess = baseResponse.GuestAccess,
+                Published = baseResponse.Published,
+                Listed = baseResponse.Listed,
+                CreatedAt = baseResponse.CreatedAt,
+                UpdatedAt = baseResponse.UpdatedAt,
+                Students = enrollments
+                    .Where(e => e.CourseId == c.Id)
+                    .Select(e => new CourseStudentResponse { Id = e.StudentId, Name = e.Name, Email = e.Email })
+                    .ToList(),
+            };
+        }).ToList();
+    }
+
     public async Task<CourseResponse?> GetByIdAsync(long id)
     {
         var entity = await _db.Courses

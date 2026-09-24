@@ -17,9 +17,20 @@ public class AuthController : ControllerBase
         _authService = authService;
     }
 
+    // Registro público: sin sesión solo se pueden crear cuentas de estudiante.
+    // Profesores y admins solo los puede crear un admin logueado (el token se
+    // lee aunque el endpoint no exija [Authorize]). Si no fuera así, cualquiera
+    // podría registrarse como admin.
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request)
     {
+        var isStaffRole = request.Role is "admin" or "profesor";
+        if (isStaffRole && !User.IsInRole("admin"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new { message = "Solo un administrador puede crear cuentas de profesor o administrador" });
+        }
+
         var (user, error) = await _authService.RegisterAsync(request);
         if (error is not null)
         {

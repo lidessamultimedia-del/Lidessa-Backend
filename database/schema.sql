@@ -327,6 +327,18 @@ GO
 
 CREATE INDEX IX_QuizAttempt_StudentId ON dbo.QuizAttempt(StudentId);
 
+-- Momento en que el estudiante abrió un examen con tiempo límite. Lo usa el
+-- backend para rechazar/anular entregas fuera de tiempo (el cronómetro del
+-- navegador no es confiable). Se borra al entregar, así un reintento
+-- autorizado arranca con el tiempo completo.
+CREATE TABLE dbo.QuizAttemptStart (
+    QuizId               BIGINT NOT NULL CONSTRAINT FK_QuizAttemptStart_Quiz REFERENCES dbo.Quiz(Id) ON DELETE CASCADE,
+    StudentId            BIGINT NOT NULL CONSTRAINT FK_QuizAttemptStart_Student REFERENCES dbo.AppUser(Id),
+    StartedAt            DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_QuizAttemptStart PRIMARY KEY (QuizId, StudentId)
+);
+GO
+
 CREATE TABLE dbo.LessonProgress (
     StudentId            BIGINT NOT NULL CONSTRAINT FK_LessonProgress_Student REFERENCES dbo.AppUser(Id),
     CourseId             BIGINT NOT NULL CONSTRAINT FK_LessonProgress_Course REFERENCES dbo.Course(Id) ON DELETE CASCADE,

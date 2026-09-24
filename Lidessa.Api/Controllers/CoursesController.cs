@@ -26,6 +26,15 @@ public class CoursesController : ControllerBase
         return Ok(await _service.GetAllAsync());
     }
 
+    [Authorize]
+    [HttpGet("mine")]
+    public async Task<IActionResult> GetMine()
+    {
+        var userId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        return Ok(await _service.GetMineAsync(userId, role));
+    }
+
     // Catálogo público de CEET — sin login, solo cursos listados y publicados.
     [AllowAnonymous]
     [HttpGet("catalog")]
