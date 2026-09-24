@@ -33,6 +33,17 @@ dotnet user-secrets set "Jwt:Key" "una-clave-larga-y-aleatoria"
 
 Usa cualquier cadena aleatoria de al menos 32 caracteres. Sin esto, `dotnet run` falla al arrancar con un error explicando qué falta.
 
+## 2.2. Crear el primer administrador
+
+`POST /api/auth/register` sin sesión solo crea cuentas de **estudiante**; las de profesor o administrador solo las puede crear un admin logueado. Para el primer admin de una base nueva:
+
+1. Regístrate normal (desde la página de registro o con `POST /api/auth/register` y `"role": "estudiante"`).
+2. Promueve esa cuenta desde SQL Server:
+   ```sql
+   UPDATE LidessaDB.dbo.AppUser SET Role = 'admin' WHERE Email = 'tu-correo@ejemplo.com';
+   ```
+3. Vuelve a iniciar sesión (el rol va dentro del token). Desde ahí ese admin puede crear profesores y otros admins.
+
 ## 3. Correr el proyecto
 
 ```bash
