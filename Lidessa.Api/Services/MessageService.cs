@@ -78,6 +78,32 @@ public class MessageService
         return (ToResponse(entity), null);
     }
 
+    // Hilo entre el usuario actual y una contraparte dentro de un curso, en
+    // orden cronológico — calcado de threadMessages. Solo devuelve mensajes en
+    // los que participa `userId`, así que nadie puede leer hilos ajenos.
+    public async Task<List<MessageResponse>> GetThreadAsync(long courseId, long userId, long otherUserId)
+    {
+        var messages = await _db.Messages
+            .AsNoTracking()
+            .Where(m => m.CourseId == courseId && (
+                (m.FromUserId == userId && m.ToUserId == otherUserId) ||
+                (m.FromUserId == otherUserId && m.ToUserId == userId)))
+            .OrderBy(m => m.CreatedAt)
+            .ThenBy(m => m.Id)
+            .ToListAsync();
+
+        return messages.Select(ToResponse).ToList();
+    }
+
+    // Marca como leídos los mensajes que `otherUserId` le envió a `readerId`
+    // en el curso — calcado de markThreadRead. Devuelve cuántos se marcaron.
+    public async Task<int> MarkThreadReadAsync(long courseId, long readerId, long otherUserId)
+    {
+        return await _db.Messages
+            .Where(m => m.CourseId == courseId && m.ToUserId == readerId && m.FromUserId == otherUserId && !m.IsRead)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.IsRead, true));
+    }
+
     // Estudiante: solo al profesor del curso o a un admin — igual que
     // `parties = [course.teacherId, adminId]` en studentConversations.
     // Profesor: solo a un estudiante inscrito en su propio curso.
