@@ -104,6 +104,96 @@ public class MessageService
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.IsRead, true));
     }
 
+    // Agrupa los mensajes de un miembro del staff (profesor o admin) en
+    // conversaciones (una por curso + contraparte) — calcado de
+    // staffConversations. No se restringe a "sus" cursos: se arma directo de
+    // los mensajes en los que participó, así sirve igual para el profesor de
+    // un curso que para el admin (que no es profesor de ninguno).
+    public async Task<List<StaffConversationResponse>> GetStaffConversationsAsync(long staffId)
+    {
+        var relevant = await _db.Messages
+            .AsNoTracking()
+            .Where(m => m.FromUserId == staffId || m.ToUserId == staffId)
+            .ToListAsync();
+
+        return relevant
+            .GroupBy(m => (m.CourseId, OtherUserId: m.FromUserId == staffId ? m.ToUserId : m.FromUserId))
+            .Select(g =>
+            {
+                var last = g.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).First();
+                var unread = g.Count(m => m.FromUserId == g.Key.OtherUserId && m.ToUserId == staffId && !m.IsRead);
+                return new StaffConversationResponse
+                {
+                    CourseId = g.Key.CourseId,
+                    OtherUserId = g.Key.OtherUserId,
+                    LastMessage = ToResponse(last),
+                    UnreadCount = unread,
+                };
+            })
+            .OrderByDescending(c => c.LastMessage.CreatedAt)
+            .ToList();
+    }
+
+    // Una conversación por curso inscrito, por cada persona con la que el
+    // estudiante puede escribirse (su profesor y un admin) — calcado de
+    // studentConversations, incluyendo a los que todavía no tienen ningún
+    // mensaje, para que el estudiante siempre pueda iniciar la conversación.
+    public async Task<List<StudentConversationResponse>> GetStudentConversationsAsync(long studentId)
+    {
+        var adminId = await _db.Users
+            .Where(u => u.Role == "admin")
+            .OrderBy(u => u.Id)
+            .Select(u => (long?)u.Id)
+            .FirstOrDefaultAsync();
+
+        var courses = await _db.CourseEnrollments
+            .Where(e => e.StudentId == studentId)
+            .Select(e => new { e.Course.Id, e.Course.TeacherId })
+            .ToListAsync();
+
+        var results = new List<StudentConversationResponse>();
+
+        foreach (var course in courses)
+        {
+            var parties = new List<long>();
+            if (course.TeacherId is not null)
+            {
+                parties.Add(course.TeacherId.Value);
+            }
+
+            if (adminId is not null && !parties.Contains(adminId.Value))
+            {
+                parties.Add(adminId.Value);
+            }
+
+            foreach (var otherId in parties)
+            {
+                var thread = await _db.Messages
+                    .AsNoTracking()
+                    .Where(m => m.CourseId == course.Id && (
+                        (m.FromUserId == studentId && m.ToUserId == otherId) ||
+                        (m.FromUserId == otherId && m.ToUserId == studentId)))
+                    .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+                    .ToListAsync();
+
+                var last = thread.FirstOrDefault();
+
+                results.Add(new StudentConversationResponse
+                {
+                    CourseId = course.Id,
+                    OtherUserId = otherId,
+                    LastMessage = last is null ? null : ToResponse(last),
+                    UnreadCount = thread.Count(m => m.ToUserId == studentId && !m.IsRead),
+                });
+            }
+        }
+
+        return results
+            .OrderByDescending(c => c.UnreadCount)
+            .ThenByDescending(c => c.LastMessage?.CreatedAt ?? DateTime.MinValue)
+            .ToList();
+    }
+
     // Estudiante: solo al profesor del curso o a un admin — igual que
     // `parties = [course.teacherId, adminId]` en studentConversations.
     // Profesor: solo a un estudiante inscrito en su propio curso.

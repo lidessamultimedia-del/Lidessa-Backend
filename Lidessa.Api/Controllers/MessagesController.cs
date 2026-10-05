@@ -67,6 +67,20 @@ public class MessagesController : ControllerBase
         return Ok(new { updated });
     }
 
+    [Authorize(Roles = "admin,profesor")]
+    [HttpGet("api/messages/staff-conversations")]
+    public async Task<IActionResult> GetStaffConversations()
+    {
+        return Ok(await _service.GetStaffConversationsAsync(CurrentUserId()));
+    }
+
+    [Authorize(Roles = "estudiante")]
+    [HttpGet("api/messages/student-conversations")]
+    public async Task<IActionResult> GetStudentConversations()
+    {
+        return Ok(await _service.GetStudentConversationsAsync(CurrentUserId()));
+    }
+
     private async Task<IActionResult?> CheckParticipationAsync(long courseId)
     {
         if (!await _service.CourseExistsAsync(courseId))
