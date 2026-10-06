@@ -33,6 +33,7 @@ builder.Services.AddScoped<QuizService>();
 builder.Services.AddScoped<QuizAttemptService>();
 builder.Services.AddScoped<LessonProgressService>();
 builder.Services.AddScoped<MessageService>();
+builder.Services.AddScoped<CertificationService>();
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
