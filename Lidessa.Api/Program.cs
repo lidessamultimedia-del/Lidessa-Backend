@@ -1,6 +1,7 @@
 using System.Text;
 using Lidessa.Api.Data;
 using Lidessa.Api.Services;
+using Lidessa.Api.Services.Notifications;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -35,6 +36,12 @@ builder.Services.AddScoped<LessonProgressService>();
 builder.Services.AddScoped<MessageService>();
 builder.Services.AddScoped<CertificationService>();
 builder.Services.AddScoped<BlogPostService>();
+builder.Services.AddScoped<PqrsfTicketService>();
+
+// Avisos a usuarios (PQRSF y los que vengan). Por ahora se escriben en la
+// consola; para enviar correos de verdad, registrar aquí otra implementación
+// de INotificationService.
+builder.Services.AddScoped<INotificationService, ConsoleNotificationService>();
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 
