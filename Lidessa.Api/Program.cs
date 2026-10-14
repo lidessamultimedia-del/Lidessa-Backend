@@ -37,6 +37,8 @@ builder.Services.AddScoped<MessageService>();
 builder.Services.AddScoped<CertificationService>();
 builder.Services.AddScoped<BlogPostService>();
 builder.Services.AddScoped<PqrsfTicketService>();
+builder.Services.AddScoped<ServiceCategoryService>();
+builder.Services.AddScoped<ServicesService>();
 
 // Avisos a usuarios (PQRSF y los que vengan). Por ahora se escriben en la
 // consola; para enviar correos de verdad, registrar aquí otra implementación
