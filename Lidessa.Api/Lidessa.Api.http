@@ -1,6 +1,96 @@
 @Lidessa.Api_HostAddress = http://localhost:5144
+# Pegar aquí el "token" que devuelve el login de un admin.
+@adminToken = PEGAR_TOKEN_ADMIN
 
-GET {{Lidessa.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Salud (confirma conexión a la base)
+GET {{Lidessa.Api_HostAddress}}/api/health
+
+### Login admin
+POST {{Lidessa.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "tu-correo@ejemplo.com", "password": "tu-clave" }
+
+# ───────── Configuración del sitio ─────────
+
+### Leer (público)
+GET {{Lidessa.Api_HostAddress}}/api/site-settings
+
+### Guardar (admin) — sin token debe dar 401; con token de no-admin, 403
+PUT {{Lidessa.Api_HostAddress}}/api/site-settings
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "phone": "+57 333 237 1006",
+  "email": "administrativo@lidessa.com",
+  "address": "Cra. 71 #46-28, Laureles, Medellín, Antioquia",
+  "schedule": "Lunes – Viernes: 7:00 a.m. – 4:30 p.m."
+}
+
+### Guardar con correo inválido — debe dar 400
+PUT {{Lidessa.Api_HostAddress}}/api/site-settings
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "phone": "1", "email": "no-es-correo", "address": "x", "schedule": "x" }
+
+# ───────── Blog (Converge) ─────────
+
+### Listar (público)
+GET {{Lidessa.Api_HostAddress}}/api/blog-posts
+
+### Crear (admin)
+POST {{Lidessa.Api_HostAddress}}/api/blog-posts
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "title": "Publicación de prueba",
+  "excerpt": "Texto de prueba",
+  "publishedOn": "2026-10-19",
+  "imageUrl": "",
+  "author": "Lidessa",
+  "phone": null,
+  "externalLink": null
+}
+
+# ───────── PQRSF ─────────
+
+### Radicar sin sesión (público)
+POST {{Lidessa.Api_HostAddress}}/api/pqrsf-tickets
+Content-Type: application/json
+
+{
+  "ticketType": "Petición",
+  "name": "Prueba",
+  "email": "prueba@ejemplo.com",
+  "phone": "3000000000",
+  "subject": "Asunto de prueba",
+  "message": "Mensaje de prueba"
+}
+
+### Radicar con tipo inválido — debe dar 400
+POST {{Lidessa.Api_HostAddress}}/api/pqrsf-tickets
+Content-Type: application/json
+
+{ "ticketType": "Otro", "subject": "x", "message": "x" }
+
+### Listar (admin)
+GET {{Lidessa.Api_HostAddress}}/api/pqrsf-tickets
+Authorization: Bearer {{adminToken}}
+
+# ───────── Servicios ─────────
+
+### Listar activos (público)
+GET {{Lidessa.Api_HostAddress}}/api/services
+
+### Listar todos, incluidos inactivos (admin)
+GET {{Lidessa.Api_HostAddress}}/api/services/admin
+Authorization: Bearer {{adminToken}}
+
+### Categorías (requiere sesión)
+GET {{Lidessa.Api_HostAddress}}/api/service-categories
+Authorization: Bearer {{adminToken}}
 
 ###

@@ -472,5 +472,7 @@ CREATE TABLE dbo.SiteSettings (
     Schedule             NVARCHAR(200) NOT NULL DEFAULT ''
 );
 GO
-INSERT INTO dbo.SiteSettings (Id) VALUES (1);
+INSERT INTO dbo.SiteSettings (Id, Phone, Email, Address, Schedule)
+VALUES (1, N'+57 333 237 1006', N'administrativo@lidessa.com',
+        N'Cra. 71 #46-28, Laureles, Medellín, Antioquia', N'Lunes – Viernes: 7:00 a.m. – 4:30 p.m.');
 GO
