@@ -47,6 +47,7 @@ builder.Services.AddScoped<SiteSettingsService>();
 builder.Services.AddScoped<INotificationService, ConsoleNotificationService>();
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<FrontendOptions>(builder.Configuration.GetSection(FrontendOptions.SectionName));
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("Falta la sección 'Jwt' en la configuración.");

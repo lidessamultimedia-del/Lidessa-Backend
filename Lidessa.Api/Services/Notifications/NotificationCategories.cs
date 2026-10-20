@@ -7,4 +7,5 @@ public static class NotificationCategories
     public const string PqrsfReceived = "pqrsf.received";
     public const string PqrsfStatusChanged = "pqrsf.status-changed";
     public const string PqrsfResponded = "pqrsf.responded";
+    public const string AccountInvite = "account.invite";
 }

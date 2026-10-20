@@ -2,23 +2,31 @@ using System.Security.Cryptography;
 using Lidessa.Api.Data;
 using Lidessa.Api.Dtos.Auth;
 using Lidessa.Api.Models;
+using Lidessa.Api.Services.Notifications;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Lidessa.Api.Services;
 
 public class AuthService
 {
     private static readonly string[] AllowedRoles = { "admin", "profesor", "estudiante" };
+    private static readonly string[] InvitableRoles = { "profesor", "estudiante" };
     private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(30);
     private static readonly TimeSpan ResetCodeLifetime = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan InviteTokenLifetime = TimeSpan.FromDays(7);
 
     private readonly AppDbContext _db;
     private readonly TokenService _tokenService;
+    private readonly INotificationService _notifications;
+    private readonly FrontendOptions _frontendOptions;
 
-    public AuthService(AppDbContext db, TokenService tokenService)
+    public AuthService(AppDbContext db, TokenService tokenService, INotificationService notifications, IOptions<FrontendOptions> frontendOptions)
     {
         _db = db;
         _tokenService = tokenService;
+        _notifications = notifications;
+        _frontendOptions = frontendOptions.Value;
     }
 
     public async Task<(UserResponse? User, string? Error)> RegisterAsync(RegisterRequest request)
@@ -50,6 +58,84 @@ public class AuthService
         await _db.SaveChangesAsync();
 
         return (ToResponse(user), null);
+    }
+
+    // El admin crea la cuenta de profesor/estudiante sin que la persona ponga
+    // su propia contraseña — queda inactiva hasta que la active con el token
+    // que recibe por el mismo INotificationService que usa el resto del sistema.
+    public async Task<(UserResponse? User, string? Error)> InviteAsync(InviteAccountRequest request)
+    {
+        if (!InvitableRoles.Contains(request.Role))
+        {
+            return (null, $"Role debe ser uno de: {string.Join(", ", InvitableRoles)}");
+        }
+
+        var emailTaken = await _db.Users.AnyAsync(u => u.Email == request.Email);
+        if (emailTaken)
+        {
+            return (null, "Ya existe una cuenta con ese correo");
+        }
+
+        var user = new AppUser
+        {
+            Name = request.Name,
+            Email = request.Email,
+            // Hash aleatorio e inútil — nadie puede loguearse con esto; la
+            // cuenta queda Active=false hasta que se active con su propio token.
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))),
+            Role = request.Role,
+            Phone = request.Phone,
+            Active = false,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        var token = GenerateUrlSafeToken();
+        _db.AccountInviteTokens.Add(new AccountInviteToken
+        {
+            UserId = user.Id,
+            Token = token,
+            ExpiresAt = DateTime.UtcNow.Add(InviteTokenLifetime),
+            CreatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        var roleLabel = request.Role == "profesor" ? "profesor" : "estudiante";
+        var activationLink = $"{_frontendOptions.BaseUrl}/activar-cuenta?token={token}";
+        await _notifications.SendAsync(new NotificationMessage
+        {
+            RecipientEmail = user.Email,
+            RecipientName = user.Name,
+            RecipientUserId = user.Id,
+            Subject = "Active su cuenta en Lidessa",
+            Body = $"Le crearon una cuenta de {roleLabel} en Lidessa. Entre a este enlace para elegir su contraseña y activarla: {activationLink} (válido 7 días).",
+            Category = NotificationCategories.AccountInvite,
+        });
+
+        return (ToResponse(user), null);
+    }
+
+    public async Task<string?> ActivateAccountAsync(ActivateAccountRequest request)
+    {
+        var inviteToken = await _db.AccountInviteTokens
+            .Include(t => t.User)
+            .Where(t => t.Token == request.Token && t.UsedAt == null)
+            .FirstOrDefaultAsync();
+
+        if (inviteToken is null || inviteToken.ExpiresAt <= DateTime.UtcNow)
+        {
+            return "El código de activación no es válido o ya expiró";
+        }
+
+        inviteToken.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+        inviteToken.User.Active = true;
+        inviteToken.User.UpdatedAt = DateTime.UtcNow;
+        inviteToken.UsedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return null;
     }
 
     public async Task<(LoginResponse? Result, string? Error)> LoginAsync(LoginRequest request)
@@ -158,6 +244,11 @@ public class AuthService
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
         user.UpdatedAt = DateTime.UtcNow;
+        // Si la cuenta todavía estaba pendiente de activar (invitación cuyo
+        // código de 7 días venció), un código de recuperación válido demuestra
+        // igual de bien que es dueño del correo — se activa aquí también, si no,
+        // quedaría con contraseña nueva pero sin poder entrar nunca.
+        user.Active = true;
         resetCode.UsedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
@@ -182,6 +273,12 @@ public class AuthService
     {
         var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token));
         return Convert.ToBase64String(bytes);
+    }
+
+    private static string GenerateUrlSafeToken()
+    {
+        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
 
     private static UserResponse ToResponse(AppUser user) => new()

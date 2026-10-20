@@ -18,6 +18,7 @@ public class AppUser
     public PersonProfile? PersonProfile { get; set; }
     public ICollection<UserSession> Sessions { get; set; } = new List<UserSession>();
     public ICollection<PasswordResetCode> PasswordResetCodes { get; set; } = new List<PasswordResetCode>();
+    public ICollection<AccountInviteToken> InviteTokens { get; set; } = new List<AccountInviteToken>();
     public ICollection<Course> CoursesTaught { get; set; } = new List<Course>();
     public ICollection<CourseEnrollment> Enrollments { get; set; } = new List<CourseEnrollment>();
     public ICollection<AssignmentAssignee> AssignedAssignments { get; set; } = new List<AssignmentAssignee>();

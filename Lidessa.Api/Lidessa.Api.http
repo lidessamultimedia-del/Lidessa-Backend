@@ -11,6 +11,29 @@ Content-Type: application/json
 
 { "email": "tu-correo@ejemplo.com", "password": "tu-clave" }
 
+# ───────── Invitación de cuenta (admin crea profesor/estudiante) ─────────
+
+### Invitar — sin token debe dar 401; con token de no-admin, 403
+POST {{Lidessa.Api_HostAddress}}/api/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "name": "Prueba Profesor", "email": "prueba.profesor@ejemplo.com", "role": "profesor", "phone": "300 123 4567" }
+
+### Activar — el enlace llega por INotificationService (en el log del API mientras no hay correo real);
+### pegar aquí solo el valor de "token" que trae ese enlace
+
+POST {{Lidessa.Api_HostAddress}}/api/auth/activate-account
+Content-Type: application/json
+
+{ "token": "PEGAR_TOKEN_DEL_LOG", "password": "una-clave-de-6-o-mas" }
+
+### Login con la cuenta ya activada — antes de activar debe dar 401 ("cuenta desactivada")
+POST {{Lidessa.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "prueba.profesor@ejemplo.com", "password": "una-clave-de-6-o-mas" }
+
 # ───────── Configuración del sitio ─────────
 
 ### Leer (público)

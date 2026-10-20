@@ -40,6 +40,33 @@ public class AuthController : ControllerBase
         return CreatedAtAction(nameof(Register), new { id = user!.Id }, user);
     }
 
+    // El admin crea cuentas de profesor/estudiante sin que la persona ponga
+    // su propia contraseña — le llega un aviso para activarla.
+    [Authorize(Roles = "admin")]
+    [HttpPost("invite")]
+    public async Task<IActionResult> Invite(InviteAccountRequest request)
+    {
+        var (user, error) = await _authService.InviteAsync(request);
+        if (error is not null)
+        {
+            return BadRequest(new { message = error });
+        }
+
+        return CreatedAtAction(nameof(Invite), new { id = user!.Id }, user);
+    }
+
+    [HttpPost("activate-account")]
+    public async Task<IActionResult> ActivateAccount(ActivateAccountRequest request)
+    {
+        var error = await _authService.ActivateAccountAsync(request);
+        if (error is not null)
+        {
+            return BadRequest(new { message = error });
+        }
+
+        return NoContent();
+    }
+
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
