@@ -116,3 +116,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Expuesto para las pruebas de integración (WebApplicationFactory<Program>).
+public partial class Program { }

@@ -45,6 +45,18 @@ public class SubmissionService
         return entity is null ? null : ToResponse(entity);
     }
 
+    // Todas las entregas de una tarea (para el profesor/admin del curso).
+    // Los borradores también se incluyen — la UI decide qué mostrar.
+    public async Task<List<SubmissionResponse>> GetAllByAssignmentAsync(long assignmentId)
+    {
+        var submissions = await _db.Submissions
+            .Where(s => s.AssignmentId == assignmentId)
+            .OrderBy(s => s.SubmittedAt)
+            .ToListAsync();
+
+        return submissions.Select(ToResponse).ToList();
+    }
+
     // Máquina de estados de la entrega: sin entrega -> draft -> submitted.
     // "submitted" es de un solo sentido (ya no se puede volver a guardar como
     // borrador) y "graded" queda bloqueada salvo que el profesor autorice un
@@ -126,6 +138,22 @@ public class SubmissionService
         await _db.SaveChangesAsync();
 
         return (ToResponse(entity), null);
+    }
+
+    // El profesor autoriza que el estudiante vuelva a entregar una tarea ya
+    // calificada sin tener que recalificarla (mismo esquema que en QuizAttempt).
+    public async Task<SubmissionResponse?> AllowRetryAsync(long submissionId)
+    {
+        var entity = await _db.Submissions.FindAsync(submissionId);
+        if (entity is null)
+        {
+            return null;
+        }
+
+        entity.RetryAllowed = true;
+        await _db.SaveChangesAsync();
+
+        return ToResponse(entity);
     }
 
     // El estudiante marca como "visto" el resultado (calificación/feedback)
