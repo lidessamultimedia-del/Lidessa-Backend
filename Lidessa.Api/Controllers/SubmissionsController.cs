@@ -61,6 +61,44 @@ public class SubmissionsController : ControllerBase
     }
 
     [Authorize(Roles = "admin,profesor")]
+    [HttpGet("api/assignments/{assignmentId:long}/submissions")]
+    public async Task<IActionResult> GetAllByAssignment(long assignmentId)
+    {
+        var courseId = await _service.GetAssignmentCourseIdAsync(assignmentId);
+        if (courseId is null)
+        {
+            return NotFound(new { message = "Tarea no encontrada" });
+        }
+
+        var forbidden = await CheckOwnershipAsync(courseId.Value);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        return Ok(await _service.GetAllByAssignmentAsync(assignmentId));
+    }
+
+    [Authorize(Roles = "admin,profesor")]
+    [HttpPut("api/submissions/{id:long}/allow-retry")]
+    public async Task<IActionResult> AllowRetry(long id)
+    {
+        var courseId = await _service.GetSubmissionCourseIdAsync(id);
+        if (courseId is null)
+        {
+            return NotFound(new { message = "Entrega no encontrada" });
+        }
+
+        var forbidden = await CheckOwnershipAsync(courseId.Value);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        return Ok(await _service.AllowRetryAsync(id));
+    }
+
+    [Authorize(Roles = "admin,profesor")]
     [HttpPut("api/submissions/{id:long}/grade")]
     public async Task<IActionResult> Grade(long id, GradeSubmissionRequest request)
     {
