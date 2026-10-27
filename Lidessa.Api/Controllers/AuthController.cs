@@ -92,6 +92,15 @@ public class AuthController : ControllerBase
         });
     }
 
+    // Cuentas reales para que el admin pueda asignar profesores e inscribir
+    // estudiantes. ?role=profesor|estudiante|admin filtra.
+    [Authorize(Roles = "admin")]
+    [HttpGet("users")]
+    public async Task<IActionResult> GetUsers([FromQuery] string? role)
+    {
+        return Ok(await _authService.GetUsersAsync(role));
+    }
+
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(RefreshTokenRequest request)
     {
