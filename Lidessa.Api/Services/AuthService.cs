@@ -281,6 +281,30 @@ public class AuthService
             .Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
 
+    // Directorio para el admin (asignar profesor, inscribir estudiantes).
+    // `role` opcional filtra por rol.
+    public async Task<List<UserResponse>> GetUsersAsync(string? role)
+    {
+        var query = _db.Users.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(role))
+        {
+            query = query.Where(u => u.Role == role);
+        }
+
+        return await query
+            .OrderBy(u => u.Name)
+            .Select(u => new UserResponse
+            {
+                Id = u.Id,
+                Name = u.Name,
+                Email = u.Email,
+                Role = u.Role,
+                Phone = u.Phone,
+                AvatarUrl = u.AvatarUrl,
+            })
+            .ToListAsync();
+    }
+
     private static UserResponse ToResponse(AppUser user) => new()
     {
         Id = user.Id,
