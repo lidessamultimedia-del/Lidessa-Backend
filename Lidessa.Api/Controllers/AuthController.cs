@@ -92,6 +92,18 @@ public class AuthController : ControllerBase
         });
     }
 
+    // Cualquier usuario autenticado necesita saber quién es el admin para
+    // poder escribirle (ej. un estudiante con una duda general) — GetUsers es
+    // admin-only, así que este es el único dato de otra cuenta que puede ver
+    // alguien sin ese rol.
+    [Authorize]
+    [HttpGet("admin-contact")]
+    public async Task<IActionResult> GetAdminContact()
+    {
+        var admin = await _authService.GetAdminContactAsync();
+        return admin is null ? NotFound() : Ok(admin);
+    }
+
     // Cuentas reales para que el admin pueda asignar profesores e inscribir
     // estudiantes. ?role=profesor|estudiante|admin filtra.
     [Authorize(Roles = "admin")]

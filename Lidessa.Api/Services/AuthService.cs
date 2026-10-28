@@ -283,6 +283,14 @@ public class AuthService
 
     // Directorio para el admin (asignar profesor, inscribir estudiantes).
     // `role` opcional filtra por rol.
+    // Mismo criterio que GetStudentConversationsAsync en MessageService para
+    // elegir "el" admin cuando hay varios — el de id más bajo.
+    public async Task<UserResponse?> GetAdminContactAsync()
+    {
+        var admin = await _db.Users.AsNoTracking().Where(u => u.Role == "admin").OrderBy(u => u.Id).FirstOrDefaultAsync();
+        return admin is null ? null : ToResponse(admin);
+    }
+
     public async Task<List<UserResponse>> GetUsersAsync(string? role)
     {
         var query = _db.Users.AsNoTracking();
