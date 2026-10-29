@@ -16,7 +16,9 @@ public class ServiceCategoriesController : ControllerBase
         _service = service;
     }
 
-    [Authorize]
+    // Público: el mega-menú y /servicios necesitan saber qué categorías están
+    // activas (y en qué orden mostrarlas) sin que haya sesión.
+    [AllowAnonymous]
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
