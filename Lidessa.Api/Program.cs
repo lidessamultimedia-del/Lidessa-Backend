@@ -3,6 +3,7 @@ using Lidessa.Api.Data;
 using Lidessa.Api.Services;
 using Lidessa.Api.Services.Notifications;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -88,6 +89,33 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Red de seguridad para cualquier excepción no controlada (bug real, caída de
+// la base, etc.): sin esto, cada controlador tendría que armar su propio
+// try/catch y la respuesta quedaría inconsistente (o vacía) frente a los 4xx
+// ya uniformes (`{ message }`) que ya devuelven los servicios. En desarrollo
+// se expone el mensaje real de la excepción para depurar más rápido; en
+// cualquier otro ambiente, el mensaje genérico (no se filtran detalles internos).
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var feature = context.Features.Get<IExceptionHandlerFeature>();
+        if (feature is not null)
+        {
+            context.RequestServices.GetRequiredService<ILogger<Program>>()
+                .LogError(feature.Error, "Error no controlado en {Path}", feature.Path);
+        }
+
+        var message = app.Environment.IsDevelopment() && feature is not null
+            ? feature.Error.Message
+            : "Ocurrió un error inesperado.";
+
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new { message });
+    });
+});
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
