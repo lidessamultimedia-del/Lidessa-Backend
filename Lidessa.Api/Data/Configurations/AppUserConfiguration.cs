@@ -8,7 +8,7 @@ public class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
 {
     public void Configure(EntityTypeBuilder<AppUser> b)
     {
-        b.ToTable("AppUser", "dbo", t => t.HasCheckConstraint("CK_AppUser_Role", "[Role] IN ('admin','profesor','estudiante')"));
+        b.ToTable("AppUser", "dbo", t => t.HasCheckConstraint("CK_AppUser_Role", "[Role] IN ('admin','profesor','estudiante','cliente')"));
 
         b.HasKey(x => x.Id);
 
