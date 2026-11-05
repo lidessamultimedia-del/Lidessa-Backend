@@ -31,4 +31,5 @@ public class AppUser
     public ICollection<Certification> Certifications { get; set; } = new List<Certification>();
     public ICollection<BlogPost> BlogPosts { get; set; } = new List<BlogPost>();
     public ICollection<PqrsfTicket> PqrsfTickets { get; set; } = new List<PqrsfTicket>();
+    public ICollection<SupplyOrder> SupplyOrders { get; set; } = new List<SupplyOrder>();
 }

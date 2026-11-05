@@ -38,6 +38,11 @@ public class AppDbContext : DbContext
     public DbSet<BlogPost> BlogPosts => Set<BlogPost>();
     public DbSet<PqrsfTicket> PqrsfTickets => Set<PqrsfTicket>();
 
+    public DbSet<SupplyProduct> SupplyProducts => Set<SupplyProduct>();
+    public DbSet<SupplyOrder> SupplyOrders => Set<SupplyOrder>();
+    public DbSet<SupplyOrderItem> SupplyOrderItems => Set<SupplyOrderItem>();
+    public DbSet<SupplyOrderStatusChange> SupplyOrderStatusChanges => Set<SupplyOrderStatusChange>();
+
     public DbSet<ServiceCategory> ServiceCategories => Set<ServiceCategory>();
     public DbSet<Service> Services => Set<Service>();
     public DbSet<SiteSettings> SiteSettings => Set<SiteSettings>();

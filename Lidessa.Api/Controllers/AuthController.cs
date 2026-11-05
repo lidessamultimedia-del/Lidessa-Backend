@@ -17,8 +17,8 @@ public class AuthController : ControllerBase
         _authService = authService;
     }
 
-    // Registro público: sin sesión solo se pueden crear cuentas de estudiante.
-    // Profesores y admins solo los puede crear un admin logueado (el token se
+    // Registro público: sin sesión solo se pueden crear cuentas de estudiante
+    // (CEET) o de cliente (tienda de Suministros). Profesores y admins solo los puede crear un admin logueado (el token se
     // lee aunque el endpoint no exija [Authorize]). Si no fuera así, cualquiera
     // podría registrarse como admin.
     [HttpPost("register")]
@@ -40,7 +40,7 @@ public class AuthController : ControllerBase
         return CreatedAtAction(nameof(Register), new { id = user!.Id }, user);
     }
 
-    // El admin crea cuentas de profesor/estudiante sin que la persona ponga
+    // El admin crea cuentas de profesor/estudiante/cliente sin que la persona ponga
     // su propia contraseña — le llega un aviso para activarla.
     [Authorize(Roles = "admin")]
     [HttpPost("invite")]

@@ -10,8 +10,10 @@ namespace Lidessa.Api.Services;
 
 public class AuthService
 {
-    private static readonly string[] AllowedRoles = { "admin", "profesor", "estudiante" };
-    private static readonly string[] InvitableRoles = { "profesor", "estudiante" };
+    // "cliente" = cuenta de la tienda de Suministros (compra en /tienda, ve
+    // sus pedidos). No entra al LMS: no se puede inscribir en cursos.
+    private static readonly string[] AllowedRoles = { "admin", "profesor", "estudiante", "cliente" };
+    private static readonly string[] InvitableRoles = { "profesor", "estudiante", "cliente" };
     private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(30);
     private static readonly TimeSpan ResetCodeLifetime = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan InviteTokenLifetime = TimeSpan.FromDays(7);
@@ -102,7 +104,7 @@ public class AuthService
         });
         await _db.SaveChangesAsync();
 
-        var roleLabel = request.Role == "profesor" ? "profesor" : "estudiante";
+        var roleLabel = request.Role;
         var activationLink = $"{_frontendOptions.BaseUrl}/activar-cuenta?token={token}";
         await _notifications.SendAsync(new NotificationMessage
         {
