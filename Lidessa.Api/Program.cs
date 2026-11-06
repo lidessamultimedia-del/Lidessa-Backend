@@ -42,6 +42,7 @@ builder.Services.AddScoped<ServiceCategoryService>();
 builder.Services.AddScoped<ServicesService>();
 builder.Services.AddScoped<SiteSettingsService>();
 builder.Services.AddScoped<SupplyProductService>();
+builder.Services.AddScoped<SupplyOrderService>();
 
 // Avisos a usuarios (PQRSF y los que vengan). Por ahora se escriben en la
 // consola; para enviar correos de verdad, registrar aquí otra implementación
