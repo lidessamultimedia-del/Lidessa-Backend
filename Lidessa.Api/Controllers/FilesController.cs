@@ -33,10 +33,12 @@ public class FilesController : ControllerBase
         return Ok(result);
     }
 
-    // Endpoint genérico de adjuntos: lo usa el material de lección y también
-    // la entrega de tareas (el estudiante sube su archivo antes de guardar
-    // el Submission), sin duplicar el controlador.
-    [Authorize(Roles = "admin,profesor,estudiante")]
+    // Endpoint genérico de adjuntos: lo usa el material de lección, la
+    // entrega de tareas (el estudiante sube su archivo antes de guardar el
+    // Submission) y ahora también Suministros (comprobante de pago del
+    // cliente, comprobante de devolución del admin al rechazar), sin
+    // duplicar el controlador.
+    [Authorize(Roles = "admin,profesor,estudiante,cliente")]
     [HttpPost("attachments")]
     [RequestSizeLimit(20 * 1024 * 1024)]
     public async Task<IActionResult> UploadAttachment(IFormFile file)
