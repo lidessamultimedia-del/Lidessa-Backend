@@ -300,4 +300,219 @@ public class SupplyOrdersEndpointsTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
+
+    // ── Ciclo de vida: enviar / pago incompleto / completar ──
+
+    private static object ShipPayload(string carrier = "Servientrega", string trackingNumber = "123456789", string photoUrl = "/uploads/attachments/paquete.jpg")
+        => new { carrier, trackingNumber, photoUrl };
+
+    private async Task<SupplyOrderResponse> CreateOrderAs(AppUser user, int quantity = 1)
+        => (await (await As(user).PostAsJsonAsync("/api/supplies/orders", OrderPayload(KitId, quantity)))
+            .Content.ReadFromJsonAsync<SupplyOrderResponse>())!;
+
+    private async Task<SupplyOrderResponse> ConfirmedOrderOf(AppUser user, int quantity = 1)
+    {
+        var order = await CreateOrderAs(user, quantity);
+        await As(Admin).PatchAsync($"/api/supplies/orders/{order.Id}/confirm", null);
+        return order;
+    }
+
+    private async Task<SupplyOrderResponse> ShippedOrderOf(AppUser user)
+    {
+        var order = await ConfirmedOrderOf(user);
+        await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/ship", ShipPayload());
+        return order;
+    }
+
+    [Fact]
+    public async Task Admin_ships_confirmed_order_with_shipment_data_and_history()
+    {
+        var order = await ConfirmedOrderOf(ClientA, 2);
+
+        var response = await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/ship", ShipPayload());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var shipped = await response.Content.ReadFromJsonAsync<SupplyOrderResponse>();
+        Assert.Equal("shipped", shipped!.Status);
+        Assert.NotNull(shipped.Shipment);
+        Assert.Equal("Servientrega", shipped.Shipment!.Carrier);
+        Assert.Equal("123456789", shipped.Shipment.TrackingNumber);
+        Assert.Equal("/uploads/attachments/paquete.jpg", shipped.Shipment.PhotoUrl);
+        Assert.Equal(new[] { "pending", "confirmed", "shipped" }, shipped.StatusHistory.Select(h => h.Status));
+        // Despachar no toca el stock: ya se descontó al crear el pedido.
+        Assert.Equal(3, await _api.QueryAsync(db => db.SupplyProducts.Where(p => p.Id == KitId).Select(p => p.Stock).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task Cannot_ship_a_pending_order()
+    {
+        var order = await CreateOrderAs(ClientA);
+
+        var response = await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/ship", ShipPayload());
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("", "123", "/uploads/attachments/p.jpg")]
+    [InlineData("Servientrega", "  ", "/uploads/attachments/p.jpg")]
+    [InlineData("Servientrega", "123", "")]
+    public async Task Ship_requires_carrier_tracking_and_photo(string carrier, string tracking, string photo)
+    {
+        var order = await ConfirmedOrderOf(ClientA);
+
+        var response = await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/ship", ShipPayload(carrier, tracking, photo));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var status = await _api.QueryAsync(db => db.SupplyOrders.Where(o => o.Id == order.Id).Select(o => o.Status).SingleAsync());
+        Assert.Equal("confirmed", status);
+    }
+
+    [Fact]
+    public async Task Client_cannot_ship_orders()
+    {
+        var order = await ConfirmedOrderOf(ClientA);
+
+        var response = await As(ClientA).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/ship", ShipPayload());
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Ship_unknown_order_is_404()
+    {
+        var response = await As(Admin).PatchAsJsonAsync("/api/supplies/orders/999/ship", ShipPayload());
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_flags_payment_shortfall_and_order_stays_pending()
+    {
+        var order = await CreateOrderAs(ClientA, 2); // total 370000
+
+        var response = await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/payment-shortfall", new
+        {
+            amount = 70000m,
+            message = "El comprobante que enviaste no cubre el total del pedido.",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var flagged = await response.Content.ReadFromJsonAsync<SupplyOrderResponse>();
+        Assert.Equal("pending", flagged!.Status);
+        Assert.Single(flagged.StatusHistory); // no es un cambio de estado
+        Assert.NotNull(flagged.PaymentNote);
+        Assert.Equal(70000m, flagged.PaymentNote!.Amount);
+        Assert.Equal("El comprobante que enviaste no cubre el total del pedido.", flagged.PaymentNote.Message);
+
+        // El cliente lo ve en "Mis pedidos".
+        var mine = await As(ClientA).GetFromJsonAsync<List<SupplyOrderResponse>>("/api/supplies/orders/mine");
+        Assert.Equal(70000m, mine!.Single().PaymentNote!.Amount);
+    }
+
+    [Fact]
+    public async Task New_payment_shortfall_replaces_the_previous_one()
+    {
+        var order = await CreateOrderAs(ClientA, 2);
+        await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/payment-shortfall", new { amount = 70000m, message = "Primero" });
+
+        var response = await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/payment-shortfall", new { amount = 20000m, message = "Segundo" });
+
+        var flagged = await response.Content.ReadFromJsonAsync<SupplyOrderResponse>();
+        Assert.Equal(20000m, flagged!.PaymentNote!.Amount);
+        Assert.Equal("Segundo", flagged.PaymentNote.Message);
+    }
+
+    [Theory]
+    [InlineData(0, "Falta")]
+    [InlineData(-5, "Falta")]
+    [InlineData(1000, "")]
+    [InlineData(999999, "Más que el total")]
+    public async Task Payment_shortfall_validates_amount_and_message(int amount, string message)
+    {
+        var order = await CreateOrderAs(ClientA); // total 185000
+
+        var response = await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/payment-shortfall", new { amount = (decimal)amount, message });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cannot_flag_payment_shortfall_on_a_confirmed_order()
+    {
+        var order = await ConfirmedOrderOf(ClientA);
+
+        var response = await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/payment-shortfall", new { amount = 1000m, message = "Falta" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Client_cannot_flag_payment_shortfall()
+    {
+        var order = await CreateOrderAs(ClientA);
+
+        var response = await As(ClientA).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/payment-shortfall", new { amount = 1000m, message = "Falta" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Client_completes_their_shipped_order_with_full_history()
+    {
+        var order = await ShippedOrderOf(ClientA);
+
+        var response = await As(ClientA).PatchAsync($"/api/supplies/orders/{order.Id}/complete", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var completed = await response.Content.ReadFromJsonAsync<SupplyOrderResponse>();
+        Assert.Equal("completed", completed!.Status);
+        Assert.Equal(new[] { "pending", "confirmed", "shipped", "completed" }, completed.StatusHistory.Select(h => h.Status));
+        Assert.NotNull(completed.Shipment); // los datos del envío se conservan
+        Assert.Equal(completed.StatusHistory[^1].ChangedAt, completed.StatusUpdatedAt);
+    }
+
+    [Fact]
+    public async Task Client_cannot_complete_another_clients_order()
+    {
+        var order = await ShippedOrderOf(ClientA);
+
+        var response = await As(ClientB).PatchAsync($"/api/supplies/orders/{order.Id}/complete", null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cannot_complete_an_order_that_was_not_shipped()
+    {
+        var order = await ConfirmedOrderOf(ClientA);
+
+        var response = await As(ClientA).PatchAsync($"/api/supplies/orders/{order.Id}/complete", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_can_complete_a_walkin_order_without_account()
+    {
+        var created = await (await As(Admin).PostAsJsonAsync("/api/supplies/orders", OrderPayload(KitId, 1, clientId: null)))
+            .Content.ReadFromJsonAsync<SupplyOrderResponse>();
+        await As(Admin).PatchAsync($"/api/supplies/orders/{created!.Id}/confirm", null);
+        await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{created.Id}/ship", ShipPayload());
+
+        var response = await As(Admin).PatchAsync($"/api/supplies/orders/{created.Id}/complete", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("completed", (await response.Content.ReadFromJsonAsync<SupplyOrderResponse>())!.Status);
+    }
+
+    [Fact]
+    public async Task Rejected_order_cannot_be_shipped_or_completed()
+    {
+        var order = await CreateOrderAs(ClientA);
+        await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/reject", new { reason = "Comprobante inválido" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/ship", ShipPayload())).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await As(ClientA).PatchAsync($"/api/supplies/orders/{order.Id}/complete", null)).StatusCode);
+    }
 }

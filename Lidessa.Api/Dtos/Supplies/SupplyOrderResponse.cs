@@ -14,6 +14,11 @@ public class SupplyOrderResponse
     public string? ProofImageUrl { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime? StatusUpdatedAt { get; set; }
+
+    // null hasta que el admin avise pago incompleto / despache el pedido.
+    public SupplyOrderPaymentNoteResponse? PaymentNote { get; set; }
+    public SupplyOrderShipmentResponse? Shipment { get; set; }
+
     public string? RejectionReason { get; set; }
     public string? RefundProofUrl { get; set; }
     public DateTime CreatedAt { get; set; }

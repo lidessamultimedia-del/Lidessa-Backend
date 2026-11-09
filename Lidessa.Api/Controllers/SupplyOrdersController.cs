@@ -80,6 +80,33 @@ public class SupplyOrdersController : ControllerBase
         return ToActionResult(result, error);
     }
 
+    [Authorize(Roles = "admin")]
+    [HttpPatch("{id:long}/ship")]
+    public async Task<IActionResult> Ship(long id, ShipSupplyOrderRequest request)
+    {
+        var (result, error) = await _service.ShipAsync(id, request);
+        return ToActionResult(result, error);
+    }
+
+    [Authorize(Roles = "admin")]
+    [HttpPatch("{id:long}/payment-shortfall")]
+    public async Task<IActionResult> PaymentShortfall(long id, PaymentShortfallRequest request)
+    {
+        var (result, error) = await _service.RequestPaymentShortfallAsync(id, request);
+        return ToActionResult(result, error);
+    }
+
+    // El cliente confirma que le llegó su pedido; el admin también puede
+    // cerrarlo (p. ej. pedidos walk-in sin cuenta).
+    [Authorize(Roles = "admin,cliente")]
+    [HttpPatch("{id:long}/complete")]
+    public async Task<IActionResult> Complete(long id)
+    {
+        var callerClientId = User.IsInRole("admin") ? null : (long?)CurrentUserId;
+        var (result, error) = await _service.CompleteAsync(id, callerClientId);
+        return ToActionResult(result, error);
+    }
+
     private IActionResult ToActionResult(SupplyOrderResponse? result, string? error)
     {
         if (error is null)
