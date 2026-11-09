@@ -6,9 +6,12 @@ using Microsoft.EntityFrameworkCore;
 namespace Lidessa.Api.Services;
 
 // Pedidos de la tienda de Suministros — calcado de createOrder() /
-// confirmOrder() / rejectOrder() en SuppliesContext. shipOrder,
-// requestPaymentShortfall y completeOrder (el resto del ciclo de vida) van
-// aparte más adelante.
+// confirmOrder() / rejectOrder() / shipOrder() / requestPaymentShortfall() /
+// completeOrder() en SuppliesContext. Ciclo de vida:
+//   pending ──confirm──▶ confirmed ──ship──▶ shipped ──complete──▶ completed
+//      └────reject────▶ rejected
+// El aviso de pago incompleto no es un estado: se anota sobre un pedido
+// pendiente, que sigue pendiente.
 public class SupplyOrderService
 {
     private readonly AppDbContext _db;
@@ -209,6 +212,126 @@ public class SupplyOrderService
         return (await GetByIdAsync(id, null), null);
     }
 
+    // El pedido confirmado ya se empacó y despachó: queda la transportadora,
+    // la guía y la foto del paquete para que el cliente le haga seguimiento.
+    // No toca el stock: ya se descontó al crear el pedido y, desde aquí, ya
+    // salió del inventario (deja de estar en HoldingStock).
+    public async Task<(SupplyOrderResponse? Result, string? Error)> ShipAsync(long id, ShipSupplyOrderRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Carrier))
+        {
+            return (null, "Indica la transportadora");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.TrackingNumber))
+        {
+            return (null, "El número de guía es obligatorio");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PhotoUrl))
+        {
+            return (null, "Sube una foto del paquete");
+        }
+
+        var entity = await _db.SupplyOrders.FindAsync(id);
+        if (entity is null)
+        {
+            return (null, "Pedido no encontrado");
+        }
+
+        if (entity.Status != SupplyOrderStatuses.Confirmed)
+        {
+            return (null, "Solo se puede despachar un pedido confirmado");
+        }
+
+        var now = DateTime.UtcNow;
+        entity.ShipmentCarrier = request.Carrier.Trim();
+        entity.ShipmentTrackingNumber = request.TrackingNumber.Trim();
+        entity.ShipmentPhotoUrl = request.PhotoUrl.Trim();
+        entity.ShippedAt = now;
+        SetStatus(entity, SupplyOrderStatuses.Shipped, now);
+
+        await _db.SaveChangesAsync();
+
+        return (await GetByIdAsync(id, null), null);
+    }
+
+    // El comprobante no cubre el total: se le anota al cliente cuánto falta
+    // y por qué. El pedido sigue pendiente (no se agrega al historial) y un
+    // aviso nuevo reemplaza al anterior, igual que en el frontend.
+    public async Task<(SupplyOrderResponse? Result, string? Error)> RequestPaymentShortfallAsync(long id, PaymentShortfallRequest request)
+    {
+        if (request.Amount <= 0)
+        {
+            return (null, "Ingresa el monto que falta");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            return (null, "Escribe un mensaje para el cliente");
+        }
+
+        var entity = await _db.SupplyOrders.FindAsync(id);
+        if (entity is null)
+        {
+            return (null, "Pedido no encontrado");
+        }
+
+        if (entity.Status != SupplyOrderStatuses.Pending)
+        {
+            return (null, "Solo se puede avisar pago incompleto en un pedido pendiente de revisión");
+        }
+
+        if (request.Amount > entity.Total)
+        {
+            return (null, "El monto que falta no puede ser mayor que el total del pedido");
+        }
+
+        var now = DateTime.UtcNow;
+        entity.PaymentNoteAmount = request.Amount;
+        entity.PaymentNoteMessage = request.Message.Trim();
+        entity.PaymentNoteDate = now;
+        entity.UpdatedAt = now;
+
+        await _db.SaveChangesAsync();
+
+        return (await GetByIdAsync(id, null), null);
+    }
+
+    // "Ya me llegó el pedido": lo marca el cliente desde su cuenta. El admin
+    // también puede (callerClientId null) para cerrar pedidos walk-in sin
+    // cuenta, que de otro modo se quedarían en "enviado" para siempre. Un
+    // cliente que no es dueño del pedido recibe "no encontrado".
+    public async Task<(SupplyOrderResponse? Result, string? Error)> CompleteAsync(long id, long? callerClientId)
+    {
+        var entity = await _db.SupplyOrders.FindAsync(id);
+        if (entity is null || (callerClientId is not null && entity.ClientId != callerClientId))
+        {
+            return (null, "Pedido no encontrado");
+        }
+
+        if (entity.Status != SupplyOrderStatuses.Shipped)
+        {
+            return (null, "Solo se puede marcar como recibido un pedido enviado");
+        }
+
+        SetStatus(entity, SupplyOrderStatuses.Completed, DateTime.UtcNow);
+
+        await _db.SaveChangesAsync();
+
+        return (await GetByIdAsync(id, null), null);
+    }
+
+    // pushStatus() del frontend: cambia el estado y deja la entrada en el
+    // historial con la misma fecha.
+    private void SetStatus(SupplyOrder entity, string status, DateTime now)
+    {
+        entity.Status = status;
+        entity.StatusUpdatedAt = now;
+        entity.UpdatedAt = now;
+        _db.SupplyOrderStatusChanges.Add(new SupplyOrderStatusChange { OrderId = entity.Id, Status = status, ChangedAt = now });
+    }
+
     private static IQueryable<SupplyOrder> Ordered(IQueryable<SupplyOrder> query) =>
         WithDetails(query).OrderByDescending(o => o.CreatedAt).ThenByDescending(o => o.Id);
 
@@ -229,6 +352,23 @@ public class SupplyOrderService
         ProofImageUrl = o.ProofImageUrl,
         Status = o.Status,
         StatusUpdatedAt = o.StatusUpdatedAt,
+        PaymentNote = o.PaymentNoteAmount is null || o.PaymentNoteDate is null
+            ? null
+            : new SupplyOrderPaymentNoteResponse
+            {
+                Amount = o.PaymentNoteAmount.Value,
+                Message = o.PaymentNoteMessage ?? string.Empty,
+                Date = o.PaymentNoteDate.Value,
+            },
+        Shipment = o.ShippedAt is null
+            ? null
+            : new SupplyOrderShipmentResponse
+            {
+                Carrier = o.ShipmentCarrier ?? string.Empty,
+                TrackingNumber = o.ShipmentTrackingNumber ?? string.Empty,
+                PhotoUrl = o.ShipmentPhotoUrl,
+                Date = o.ShippedAt.Value,
+            },
         RejectionReason = o.RejectionReason,
         RefundProofUrl = o.RefundProofUrl,
         CreatedAt = o.CreatedAt,
