@@ -42,6 +42,7 @@ public class AppDbContext : DbContext
     public DbSet<SupplyOrder> SupplyOrders => Set<SupplyOrder>();
     public DbSet<SupplyOrderItem> SupplyOrderItems => Set<SupplyOrderItem>();
     public DbSet<SupplyOrderStatusChange> SupplyOrderStatusChanges => Set<SupplyOrderStatusChange>();
+    public DbSet<SupplyOrderDeliveryToken> SupplyOrderDeliveryTokens => Set<SupplyOrderDeliveryToken>();
 
     public DbSet<ServiceCategory> ServiceCategories => Set<ServiceCategory>();
     public DbSet<Service> Services => Set<Service>();

@@ -50,6 +50,7 @@ public class SupplyOrder
     public AppUser? Client { get; set; }
     public ICollection<SupplyOrderItem> Items { get; set; } = new List<SupplyOrderItem>();
     public ICollection<SupplyOrderStatusChange> StatusHistory { get; set; } = new List<SupplyOrderStatusChange>();
+    public ICollection<SupplyOrderDeliveryToken> DeliveryTokens { get; set; } = new List<SupplyOrderDeliveryToken>();
 }
 
 public static class SupplyOrderStatuses

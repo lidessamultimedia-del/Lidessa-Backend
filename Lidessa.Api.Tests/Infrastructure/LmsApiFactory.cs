@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using Lidessa.Api.Data;
 using Lidessa.Api.Models;
 using Lidessa.Api.Services;
+using Lidessa.Api.Services.Notifications;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +17,11 @@ namespace Lidessa.Api.Tests.Infrastructure;
 public class LmsApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = $"lidessa-tests-{Guid.NewGuid()}";
+
+    // Avisos que se "enviaron" durante las pruebas de esta instancia (ver
+    // RecordingNotificationService) — para verificar categoría/destinatario
+    // sin un servidor de correo real.
+    public ConcurrentBag<NotificationMessage> SentNotifications { get; } = new();
 
     static LmsApiFactory()
     {
@@ -32,6 +39,10 @@ public class LmsApiFactory : WebApplicationFactory<Program>
             var sqlServerOptions = services.Single(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>));
             services.Remove(sqlServerOptions);
             services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(_databaseName));
+
+            var notifications = services.Single(d => d.ServiceType == typeof(INotificationService));
+            services.Remove(notifications);
+            services.AddSingleton<INotificationService>(new RecordingNotificationService(SentNotifications));
         });
     }
 
