@@ -59,6 +59,23 @@ public class AuthService
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
 
+        // Aviso de bienvenida solo para "cliente" (tienda de Suministros) —
+        // hoy el registro de estudiante no tiene un correo equivalente
+        // pedido en el plan; "admin"/"profesor" nunca llegan aquí (los crea
+        // un admin vía InviteAsync, no el registro público).
+        if (user.Role == "cliente")
+        {
+            await _notifications.SendAsync(new NotificationMessage
+            {
+                RecipientEmail = user.Email,
+                RecipientName = user.Name,
+                RecipientUserId = user.Id,
+                Subject = "Bienvenido a la tienda de Suministros de Lidessa",
+                Body = $"Hola {user.Name},\n\nTu cuenta de cliente en la tienda de Suministros de Lidessa ya está activa. Ya puedes ingresar y hacer tus pedidos.",
+                Category = NotificationCategories.SuppliesAccountCreated,
+            });
+        }
+
         return (ToResponse(user), null);
     }
 

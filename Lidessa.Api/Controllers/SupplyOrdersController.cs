@@ -107,6 +107,21 @@ public class SupplyOrdersController : ControllerBase
         return ToActionResult(result, error);
     }
 
+    // Botón "Ya me llegó" dentro del correo de envío: sin login, protegido
+    // por el token de un solo uso que se generó al despachar el pedido.
+    [AllowAnonymous]
+    [HttpGet("confirm-delivery/{token}")]
+    public async Task<IActionResult> ConfirmDelivery(string token)
+    {
+        var (success, error) = await _service.ConfirmDeliveryAsync(token);
+        if (!success)
+        {
+            return BadRequest(new { message = error });
+        }
+
+        return Ok(new { message = "Gracias, confirmamos que tu pedido fue entregado." });
+    }
+
     private IActionResult ToActionResult(SupplyOrderResponse? result, string? error)
     {
         if (error is null)

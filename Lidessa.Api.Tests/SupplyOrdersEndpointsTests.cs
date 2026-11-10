@@ -515,4 +515,131 @@ public class SupplyOrdersEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, (await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/ship", ShipPayload())).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await As(ClientA).PatchAsync($"/api/supplies/orders/{order.Id}/complete", null)).StatusCode);
     }
+
+    // ── Avisos por correo (ver hallazgo 2.1: las 6 categorías de Suministros) ──
+
+    [Fact]
+    public async Task Confirming_an_order_notifies_the_customer()
+    {
+        var order = await CreateOrderAs(ClientA);
+
+        await As(Admin).PatchAsync($"/api/supplies/orders/{order.Id}/confirm", null);
+
+        var sent = Assert.Single(_api.SentNotifications, n => n.Category == "supplies.order-confirmed");
+        Assert.Equal(ClientA.Email, sent.RecipientEmail);
+        Assert.Contains($"#{order.Id}", sent.Body);
+    }
+
+    [Fact]
+    public async Task Rejecting_an_order_notifies_the_customer_with_the_reason()
+    {
+        var order = await CreateOrderAs(ClientA);
+
+        await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/reject", new { reason = "Comprobante inválido" });
+
+        var sent = Assert.Single(_api.SentNotifications, n => n.Category == "supplies.order-rejected");
+        Assert.Equal(ClientA.Email, sent.RecipientEmail);
+        Assert.Contains("Comprobante inválido", sent.Body);
+    }
+
+    [Fact]
+    public async Task Shipping_an_order_notifies_the_customer_with_a_delivery_confirmation_link()
+    {
+        var order = await ConfirmedOrderOf(ClientA);
+
+        await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/ship", ShipPayload());
+
+        var sent = Assert.Single(_api.SentNotifications, n => n.Category == "supplies.order-shipped");
+        Assert.Equal(ClientA.Email, sent.RecipientEmail);
+        Assert.Contains("/api/supplies/orders/confirm-delivery/", sent.Body);
+    }
+
+    [Fact]
+    public async Task Payment_shortfall_notifies_the_customer_with_the_amount_and_message()
+    {
+        var order = await CreateOrderAs(ClientA, 2); // total 370000
+
+        await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{order.Id}/payment-shortfall", new { amount = 70000m, message = "Falta completar la transferencia" });
+
+        var sent = Assert.Single(_api.SentNotifications, n => n.Category == "supplies.payment-shortfall");
+        Assert.Equal(ClientA.Email, sent.RecipientEmail);
+        Assert.Contains("70.000", sent.Body);
+        Assert.Contains("Falta completar la transferencia", sent.Body);
+    }
+
+    [Fact]
+    public async Task Registering_a_cliente_account_sends_a_welcome_notification()
+    {
+        var response = await Anonymous().PostAsJsonAsync("/api/auth/register", new
+        {
+            name = "Nuevo Cliente",
+            email = "nuevo.cliente@lidessa.test",
+            password = "cliente123",
+            role = "cliente",
+            phone = "300 000 0000",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var sent = Assert.Single(_api.SentNotifications, n => n.Category == "supplies.account-created");
+        Assert.Equal("nuevo.cliente@lidessa.test", sent.RecipientEmail);
+    }
+
+    // ── Confirmación pública de entrega (botón del correo, sin login) ──
+
+    private async Task<string> DeliveryTokenFor(long orderId) =>
+        await _api.QueryAsync(db => db.SupplyOrderDeliveryTokens
+            .Where(t => t.OrderId == orderId)
+            .OrderByDescending(t => t.Id)
+            .Select(t => t.Token)
+            .FirstAsync());
+
+    [Fact]
+    public async Task Anonymous_confirms_delivery_with_a_valid_token()
+    {
+        var order = await ShippedOrderOf(ClientA);
+        var token = await DeliveryTokenFor(order.Id);
+
+        var response = await Anonymous().GetAsync($"/api/supplies/orders/confirm-delivery/{token}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("completed", await _api.QueryAsync(db => db.SupplyOrders.Where(o => o.Id == order.Id).Select(o => o.Status).SingleAsync()));
+        Assert.True(await _api.QueryAsync(db => db.SupplyOrderDeliveryTokens.Where(t => t.Token == token).Select(t => t.UsedAt != null).SingleAsync()));
+        // La administradora queda notificada de que el cliente confirmó.
+        Assert.Contains(_api.SentNotifications, n => n.Category == "supplies.delivery-confirmed" && n.RecipientEmail == Admin.Email);
+    }
+
+    [Fact]
+    public async Task A_used_token_cannot_confirm_delivery_twice()
+    {
+        var order = await ShippedOrderOf(ClientA);
+        var token = await DeliveryTokenFor(order.Id);
+        await Anonymous().GetAsync($"/api/supplies/orders/confirm-delivery/{token}");
+
+        var response = await Anonymous().GetAsync($"/api/supplies/orders/confirm-delivery/{token}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Unknown_token_is_rejected()
+    {
+        var response = await Anonymous().GetAsync("/api/supplies/orders/confirm-delivery/no-existe-este-token");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Stale_link_is_rejected_if_the_order_was_already_completed_another_way()
+    {
+        // La administradora (o el cliente desde su cuenta) completó el
+        // pedido antes de que se usara el enlace del correo — el token
+        // sigue sin usar, pero el pedido ya no está "enviado".
+        var order = await ShippedOrderOf(ClientA);
+        var token = await DeliveryTokenFor(order.Id);
+        await As(Admin).PatchAsync($"/api/supplies/orders/{order.Id}/complete", null);
+
+        var response = await Anonymous().GetAsync($"/api/supplies/orders/confirm-delivery/{token}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }

@@ -689,6 +689,20 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID('dbo.SupplyOrderDeliveryToken', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.SupplyOrderDeliveryToken (
+        Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
+        OrderId              BIGINT NOT NULL CONSTRAINT FK_SupplyOrderDeliveryToken_Order REFERENCES dbo.SupplyOrder(Id) ON DELETE CASCADE,
+        Token                NVARCHAR(100) NOT NULL,
+        ExpiresAt            DATETIME2 NOT NULL,
+        UsedAt               DATETIME2 NULL,
+        CreatedAt            DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE UNIQUE INDEX IX_SupplyOrderDeliveryToken_Token ON dbo.SupplyOrderDeliveryToken(Token);
+END
+GO
+
 /* 3. Productos de ejemplo (los mismos de suppliesSeed.js) --------------- */
 IF NOT EXISTS (SELECT 1 FROM dbo.SupplyProduct WHERE Name = N'Botiquín tipo A certificado')
     INSERT INTO dbo.SupplyProduct (Name, Description, Price, ImageUrl, Stock, Active)
