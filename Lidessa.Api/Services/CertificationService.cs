@@ -58,8 +58,8 @@ public class CertificationService
             return (null, "Curso no encontrado");
         }
 
-        var student = await _db.Users.SingleOrDefaultAsync(u => u.Id == request.StudentId);
-        if (student is null || student.Role != "estudiante")
+        var student = await _db.Users.Include(u => u.Roles).SingleOrDefaultAsync(u => u.Id == request.StudentId);
+        if (student is null || (student.Role != "estudiante" && !student.Roles.Any(r => r.Role == "estudiante")))
         {
             return (null, "El estudiante indicado no existe");
         }

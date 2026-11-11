@@ -105,6 +105,21 @@ GO
 CREATE UNIQUE INDEX UX_AccountInviteToken_Token ON dbo.AccountInviteToken(Token);
 GO
 
+-- Cuentas vinculadas (ver 2.2): todos los roles de la cuenta, incluido el
+-- original. AppUser.Role queda como rol principal. GrantedByUserId = admin
+-- que agregó el rol (NULL para el rol con que se creó la cuenta).
+CREATE TABLE dbo.AppUserRole (
+    Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
+    UserId               BIGINT NOT NULL CONSTRAINT FK_AppUserRole_User REFERENCES dbo.AppUser(Id) ON DELETE CASCADE,
+    Role                 NVARCHAR(20) NOT NULL
+        CONSTRAINT CK_AppUserRole_Role CHECK (Role IN ('admin','profesor','estudiante','cliente')),
+    GrantedAt            DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    GrantedByUserId      BIGINT NULL CONSTRAINT FK_AppUserRole_GrantedBy REFERENCES dbo.AppUser(Id)
+);
+GO
+CREATE UNIQUE INDEX UX_AppUserRole_User_Role ON dbo.AppUserRole(UserId, Role);
+GO
+
 CREATE TABLE dbo.DocumentType (
     Id                   BIGINT IDENTITY(1,1) PRIMARY KEY,
     Name                 NVARCHAR(80) NOT NULL UNIQUE       -- 'Cédula de ciudadanía', etc.

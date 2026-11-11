@@ -89,6 +89,7 @@ public class AuthController : ControllerBase
             name = User.FindFirstValue(ClaimTypes.Name),
             email = User.FindFirstValue(ClaimTypes.Email),
             role = User.FindFirstValue(ClaimTypes.Role),
+            roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList(),
         });
     }
 
@@ -111,6 +112,27 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> GetUsers([FromQuery] string? role)
     {
         return Ok(await _authService.GetUsersAsync(role));
+    }
+
+    // Cuentas vinculadas (ver 2.2): agrega un rol a una cuenta existente
+    // (profesor/estudiante/cliente) y le avisa al dueño. Body: { "role": "cliente" }.
+    [Authorize(Roles = "admin")]
+    [HttpPost("users/{id:long}/roles")]
+    public async Task<IActionResult> AddRole(long id, AddRoleRequest request)
+    {
+        var adminId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var (user, error, notFound) = await _authService.AddRoleAsync(id, request, adminId);
+        if (notFound)
+        {
+            return NotFound(new { message = "Cuenta no encontrada" });
+        }
+
+        if (error is not null)
+        {
+            return BadRequest(new { message = error });
+        }
+
+        return Ok(user);
     }
 
     [HttpPost("refresh")]
