@@ -8,6 +8,8 @@ public static class NotificationCategories
     public const string PqrsfStatusChanged = "pqrsf.status-changed";
     public const string PqrsfResponded = "pqrsf.responded";
     public const string AccountInvite = "account.invite";
+    // Cuentas vinculadas (ver 2.2): se le agregó un rol nuevo a la cuenta.
+    public const string AccountRoleAdded = "account.role-added";
 
     // Suministros (ver hallazgo 2.1 del plan): cuenta creada, pedido
     // confirmado/rechazado/enviado, pago incompleto y confirmación de

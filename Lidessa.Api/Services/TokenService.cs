@@ -25,8 +25,19 @@ public class TokenService
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Name, user.Name),
+            // Rol principal primero: el código que lee un solo rol con
+            // FindFirstValue(ClaimTypes.Role) sigue viendo el mismo de antes.
             new(ClaimTypes.Role, user.Role),
         };
+
+        // Cuentas vinculadas (ver 2.2): un claim por cada rol extra, así
+        // [Authorize(Roles = ...)] e IsInRole(...) reconocen todos los roles.
+        // Requiere que user.Roles venga cargado (Include) — si no, la cuenta
+        // solo lleva su rol principal.
+        foreach (var role in user.Roles.Select(r => r.Role).Where(r => r != user.Role).Distinct())
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
+        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

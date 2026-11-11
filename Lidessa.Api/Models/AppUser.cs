@@ -7,6 +7,8 @@ public class AppUser
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
+    // Rol principal (con el que se creó la cuenta). La lista completa de
+    // roles de la cuenta está en Roles (ver AppUserRole).
     public string Role { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string? AvatarUrl { get; set; }
@@ -16,6 +18,7 @@ public class AppUser
     public DateTime UpdatedAt { get; set; }
 
     public PersonProfile? PersonProfile { get; set; }
+    public ICollection<AppUserRole> Roles { get; set; } = new List<AppUserRole>();
     public ICollection<UserSession> Sessions { get; set; } = new List<UserSession>();
     public ICollection<PasswordResetCode> PasswordResetCodes { get; set; } = new List<PasswordResetCode>();
     public ICollection<AccountInviteToken> InviteTokens { get; set; } = new List<AccountInviteToken>();

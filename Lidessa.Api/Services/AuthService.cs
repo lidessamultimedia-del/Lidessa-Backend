@@ -55,6 +55,7 @@ public class AuthService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
+        user.Roles.Add(new AppUserRole { Role = request.Role, GrantedAt = DateTime.UtcNow });
 
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
@@ -108,6 +109,7 @@ public class AuthService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
+        user.Roles.Add(new AppUserRole { Role = request.Role, GrantedAt = DateTime.UtcNow });
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
 
@@ -136,6 +138,71 @@ public class AuthService
         return (ToResponse(user), null);
     }
 
+    // Cuentas vinculadas (ver 2.2): agrega un rol a una cuenta que ya existe
+    // (p. ej. un estudiante que también compra en la tienda), en vez de crear
+    // una segunda cuenta con otro correo. La persona sigue entrando con el
+    // mismo correo y contraseña; el rol nuevo aparece en su token desde el
+    // próximo login o refresh. Se le avisa al dueño de la cuenta.
+    // Qué puede hacer cada combinación de roles lo decide cada módulo.
+    public async Task<(UserResponse? User, string? Error, bool NotFound)> AddRoleAsync(long userId, AddRoleRequest request, long grantedByUserId)
+    {
+        // Mismos roles que se pueden invitar: "admin" nunca se agrega por aquí.
+        if (!InvitableRoles.Contains(request.Role))
+        {
+            return (null, $"Role debe ser uno de: {string.Join(", ", InvitableRoles)}", false);
+        }
+
+        var user = await _db.Users.Include(u => u.Roles).SingleOrDefaultAsync(u => u.Id == userId);
+        if (user is null)
+        {
+            return (null, null, true);
+        }
+
+        if (user.Role == request.Role || user.Roles.Any(r => r.Role == request.Role))
+        {
+            return (null, "La cuenta ya tiene ese rol", false);
+        }
+
+        user.Roles.Add(new AppUserRole
+        {
+            Role = request.Role,
+            GrantedAt = DateTime.UtcNow,
+            GrantedByUserId = grantedByUserId,
+        });
+        user.UpdatedAt = DateTime.UtcNow;
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Dos solicitudes simultáneas con el mismo rol: la segunda choca
+            // con UX_AppUserRole_User_Role.
+            return (null, "La cuenta ya tiene ese rol", false);
+        }
+
+        var body = $"Hola {user.Name},\n\nSe agregó el rol de {request.Role} a su cuenta en Lidessa ({user.Email}). " +
+                   "Siga entrando con el mismo correo y contraseña; si ya tenía la sesión abierta, cierre sesión y vuelva a entrar para ver el acceso nuevo.\n\n" +
+                   "Si usted no pidió este cambio, comuníquese con Lidessa.";
+        if (!user.Active)
+        {
+            body += "\n\nSu cuenta todavía no está activada: use el enlace de activación que le enviamos o la opción \"Olvidé mi contraseña\".";
+        }
+
+        await _notifications.SendAsync(new NotificationMessage
+        {
+            RecipientEmail = user.Email,
+            RecipientName = user.Name,
+            RecipientUserId = user.Id,
+            Subject = "Se agregó un rol nuevo a su cuenta de Lidessa",
+            Body = body,
+            Category = NotificationCategories.AccountRoleAdded,
+        });
+
+        return (ToResponse(user), null, false);
+    }
+
     public async Task<string?> ActivateAccountAsync(ActivateAccountRequest request)
     {
         var inviteToken = await _db.AccountInviteTokens
@@ -159,7 +226,7 @@ public class AuthService
 
     public async Task<(LoginResponse? Result, string? Error)> LoginAsync(LoginRequest request)
     {
-        var user = await _db.Users.SingleOrDefaultAsync(u => u.Email == request.Email);
+        var user = await _db.Users.Include(u => u.Roles).SingleOrDefaultAsync(u => u.Email == request.Email);
         if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
             return (null, "Correo o contraseña incorrectos");
@@ -186,7 +253,7 @@ public class AuthService
     {
         var tokenHash = HashToken(request.RefreshToken);
         var session = await _db.UserSessions
-            .Include(s => s.User)
+            .Include(s => s.User).ThenInclude(u => u.Roles)
             .SingleOrDefaultAsync(s => s.TokenHash == tokenHash);
 
         if (session is null || session.RevokedAt is not null || session.ExpiresAt <= DateTime.UtcNow)
@@ -315,21 +382,17 @@ public class AuthService
         var query = _db.Users.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(role))
         {
-            query = query.Where(u => u.Role == role);
+            // Incluye cuentas vinculadas: ?role=estudiante también trae a un
+            // cliente al que se le agregó el rol de estudiante.
+            query = query.Where(u => u.Role == role || u.Roles.Any(r => r.Role == role));
         }
 
-        return await query
+        var users = await query
+            .Include(u => u.Roles)
             .OrderBy(u => u.Name)
-            .Select(u => new UserResponse
-            {
-                Id = u.Id,
-                Name = u.Name,
-                Email = u.Email,
-                Role = u.Role,
-                Phone = u.Phone,
-                AvatarUrl = u.AvatarUrl,
-            })
             .ToListAsync();
+
+        return users.Select(ToResponse).ToList();
     }
 
     private static UserResponse ToResponse(AppUser user) => new()
@@ -338,6 +401,10 @@ public class AuthService
         Name = user.Name,
         Email = user.Email,
         Role = user.Role,
+        Roles = new[] { user.Role }
+            .Concat(user.Roles.OrderBy(r => r.GrantedAt).Select(r => r.Role))
+            .Distinct()
+            .ToList(),
         Phone = user.Phone,
         AvatarUrl = user.AvatarUrl,
     };

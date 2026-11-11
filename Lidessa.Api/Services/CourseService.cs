@@ -301,7 +301,7 @@ public class CourseService
 
         if (request.TeacherId is not null)
         {
-            var teacherExists = await _db.Users.AnyAsync(u => u.Id == request.TeacherId && u.Role == "profesor");
+            var teacherExists = await _db.Users.AnyAsync(u => u.Id == request.TeacherId && (u.Role == "profesor" || u.Roles.Any(r => r.Role == "profesor")));
             if (!teacherExists)
             {
                 return "El profesor indicado no existe";

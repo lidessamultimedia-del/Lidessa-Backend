@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<PasswordResetCode> PasswordResetCodes => Set<PasswordResetCode>();
     public DbSet<AccountInviteToken> AccountInviteTokens => Set<AccountInviteToken>();
+    public DbSet<AppUserRole> UserRoles => Set<AppUserRole>();
     public DbSet<DocumentType> DocumentTypes => Set<DocumentType>();
     public DbSet<PersonProfile> PersonProfiles => Set<PersonProfile>();
 
