@@ -642,4 +642,145 @@ public class SupplyOrdersEndpointsTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    // ── Editar / eliminar (panel admin) ──
+
+    private static object UpdatePayload(object? items = null, string customerName = "Constructora Andina (editada)") => new
+    {
+        customerName,
+        customerPhone = "300 123 4567",
+        address = "Calle 10 # 20-30",
+        items,
+    };
+
+    [Fact]
+    public async Task Admin_updates_contact_info_without_sending_items_leaves_items_and_stock_untouched()
+    {
+        var order = await CreateOrderAs(ClientA, 2); // Kit: stock 5 -> 3
+
+        var response = await As(Admin).PutAsJsonAsync($"/api/supplies/orders/{order.Id}", UpdatePayload(items: null));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await response.Content.ReadFromJsonAsync<SupplyOrderResponse>();
+        Assert.Equal("Constructora Andina (editada)", updated!.CustomerName);
+        Assert.Single(updated.Items);
+        Assert.Equal(2, updated.Items[0].Quantity);
+        Assert.Equal(3, await _api.QueryAsync(db => db.SupplyProducts.Where(p => p.Id == KitId).Select(p => p.Stock).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task Admin_increases_item_quantity_and_stock_adjusts_by_the_difference()
+    {
+        var order = await CreateOrderAs(ClientA, 2); // Kit: stock 5 -> 3
+
+        var response = await As(Admin).PutAsJsonAsync($"/api/supplies/orders/{order.Id}",
+            UpdatePayload(items: new[] { new { productId = KitId, quantity = 4 } }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await response.Content.ReadFromJsonAsync<SupplyOrderResponse>();
+        Assert.Equal(4, updated!.Items[0].Quantity);
+        Assert.Equal(740000m, updated.Total); // 185000 * 4
+        Assert.Equal(1, await _api.QueryAsync(db => db.SupplyProducts.Where(p => p.Id == KitId).Select(p => p.Stock).SingleAsync())); // 5 - 4
+    }
+
+    [Fact]
+    public async Task Admin_cannot_increase_item_quantity_beyond_available_stock()
+    {
+        var order = await CreateOrderAs(ClientA, 2); // Kit: stock 5 -> 3, disponible para este pedido = 3+2 = 5
+
+        var response = await As(Admin).PutAsJsonAsync($"/api/supplies/orders/{order.Id}",
+            UpdatePayload(items: new[] { new { productId = KitId, quantity = 6 } }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(3, await _api.QueryAsync(db => db.SupplyProducts.Where(p => p.Id == KitId).Select(p => p.Stock).SingleAsync())); // sin cambios
+    }
+
+    [Fact]
+    public async Task Admin_switching_products_returns_old_stock_and_holds_the_new_one()
+    {
+        var order = await CreateOrderAs(ClientA, 2); // Kit: stock 5 -> 3
+
+        var response = await As(Admin).PutAsJsonAsync($"/api/supplies/orders/{order.Id}",
+            UpdatePayload(items: new[] { new { productId = HelmetId, quantity = 1 } }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(5, await _api.QueryAsync(db => db.SupplyProducts.Where(p => p.Id == KitId).Select(p => p.Stock).SingleAsync())); // devuelto
+        Assert.Equal(2, await _api.QueryAsync(db => db.SupplyProducts.Where(p => p.Id == HelmetId).Select(p => p.Stock).SingleAsync())); // 3 - 1
+    }
+
+    [Fact]
+    public async Task Cannot_edit_items_of_a_shipped_order_but_contact_info_still_editable()
+    {
+        var order = await ShippedOrderOf(ClientA);
+
+        var itemsResponse = await As(Admin).PutAsJsonAsync($"/api/supplies/orders/{order.Id}",
+            UpdatePayload(items: new[] { new { productId = KitId, quantity = 1 } }));
+        Assert.Equal(HttpStatusCode.BadRequest, itemsResponse.StatusCode);
+
+        var contactResponse = await As(Admin).PutAsJsonAsync($"/api/supplies/orders/{order.Id}", UpdatePayload(items: null));
+        Assert.Equal(HttpStatusCode.OK, contactResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Update_unknown_order_is_404()
+    {
+        var response = await As(Admin).PutAsJsonAsync("/api/supplies/orders/999", UpdatePayload(items: null));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Client_cannot_update_orders()
+    {
+        var order = await CreateOrderAs(ClientA);
+
+        var response = await As(ClientA).PutAsJsonAsync($"/api/supplies/orders/{order.Id}", UpdatePayload(items: null));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_deletes_pending_order_and_restocks_inventory()
+    {
+        var order = await CreateOrderAs(ClientA, 2); // Kit: stock 5 -> 3
+
+        var response = await As(Admin).DeleteAsync($"/api/supplies/orders/{order.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(5, await _api.QueryAsync(db => db.SupplyProducts.Where(p => p.Id == KitId).Select(p => p.Stock).SingleAsync()));
+        Assert.False(await _api.QueryAsync(db => db.SupplyOrders.AnyAsync(o => o.Id == order.Id)));
+    }
+
+    [Fact]
+    public async Task Admin_deletes_a_completed_order_without_touching_stock()
+    {
+        var created = await (await As(Admin).PostAsJsonAsync("/api/supplies/orders", OrderPayload(KitId, 1, clientId: null)))
+            .Content.ReadFromJsonAsync<SupplyOrderResponse>();
+        await As(Admin).PatchAsync($"/api/supplies/orders/{created!.Id}/confirm", null);
+        await As(Admin).PatchAsJsonAsync($"/api/supplies/orders/{created.Id}/ship", ShipPayload());
+        await As(Admin).PatchAsync($"/api/supplies/orders/{created.Id}/complete", null);
+
+        var response = await As(Admin).DeleteAsync($"/api/supplies/orders/{created.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(4, await _api.QueryAsync(db => db.SupplyProducts.Where(p => p.Id == KitId).Select(p => p.Stock).SingleAsync())); // 5 - 1, ya no estaba "apartado"
+    }
+
+    [Fact]
+    public async Task Delete_unknown_order_is_404()
+    {
+        var response = await As(Admin).DeleteAsync("/api/supplies/orders/999");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Client_cannot_delete_orders()
+    {
+        var order = await CreateOrderAs(ClientA);
+
+        var response = await As(ClientA).DeleteAsync($"/api/supplies/orders/{order.Id}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
 }

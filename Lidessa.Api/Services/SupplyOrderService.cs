@@ -159,6 +159,146 @@ public class SupplyOrderService
         return (await GetByIdAsync(entity.Id, null), null);
     }
 
+    // Edición desde el panel admin (datos de contacto, artículos opcionales).
+    // Calcado de updateOrder() del frontend: si vienen artículos nuevos y el
+    // pedido todavía aparta stock (pendiente/confirmado), se ajusta el
+    // inventario por la diferencia con los que tenía; si no vienen (el
+    // pedido ya está enviado/completado/rechazado), no se tocan ni el stock
+    // ni los artículos.
+    public async Task<(SupplyOrderResponse? Result, string? Error)> UpdateAsync(long id, UpdateSupplyOrderRequest request)
+    {
+        var entity = await _db.SupplyOrders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == id);
+        if (entity is null)
+        {
+            return (null, "Pedido no encontrado");
+        }
+
+        if (request.Items is not null)
+        {
+            if (!SupplyOrderStatuses.HoldingStock.Contains(entity.Status))
+            {
+                return (null, "Los artículos de este pedido ya no se pueden editar");
+            }
+
+            if (request.Items.Count == 0)
+            {
+                return (null, "Agregue al menos un producto");
+            }
+
+            // Unión de los productos nuevos y los que ya tenía: a los que
+            // salen de la lista hay que devolverles el stock igual que a
+            // los que se quedan con menos cantidad.
+            var oldProductIds = entity.Items.Where(i => i.ProductId is not null).Select(i => i.ProductId!.Value);
+            var productIds = request.Items.Select(i => i.ProductId).Concat(oldProductIds).Distinct().ToList();
+            var products = await _db.SupplyProducts.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+
+            var newQuantityByProduct = new Dictionary<long, int>();
+            foreach (var item in request.Items)
+            {
+                if (!products.TryGetValue(item.ProductId, out var product))
+                {
+                    return (null, "Uno de los productos ya no existe");
+                }
+
+                if (!product.Active)
+                {
+                    return (null, $"\"{product.Name}\" ya no está disponible");
+                }
+
+                newQuantityByProduct[item.ProductId] = newQuantityByProduct.GetValueOrDefault(item.ProductId) + item.Quantity;
+            }
+
+            var oldQuantityByProduct = new Dictionary<long, int>();
+            foreach (var item in entity.Items.Where(i => i.ProductId is not null))
+            {
+                oldQuantityByProduct[item.ProductId!.Value] = oldQuantityByProduct.GetValueOrDefault(item.ProductId.Value) + item.Quantity;
+            }
+
+            // Stock disponible para este pedido = lo que hay hoy + lo que este
+            // mismo pedido ya tenía apartado (se libera antes de comparar).
+            foreach (var (productId, newQuantity) in newQuantityByProduct)
+            {
+                var product = products[productId];
+                var available = product.Stock + oldQuantityByProduct.GetValueOrDefault(productId);
+                if (newQuantity > available)
+                {
+                    return (null, $"No hay suficiente stock de \"{product.Name}\" (disponible: {available})");
+                }
+            }
+
+            foreach (var (productId, newQuantity) in newQuantityByProduct)
+            {
+                products[productId].Stock += oldQuantityByProduct.GetValueOrDefault(productId) - newQuantity;
+            }
+            // Productos que ya no quedaron en la lista nueva: se les devuelve
+            // todo lo que tenían apartado.
+            foreach (var (productId, oldQuantity) in oldQuantityByProduct.Where(kv => !newQuantityByProduct.ContainsKey(kv.Key)))
+            {
+                if (products.TryGetValue(productId, out var product))
+                {
+                    product.Stock += oldQuantity;
+                }
+            }
+
+            _db.SupplyOrderItems.RemoveRange(entity.Items);
+            entity.Items = request.Items.Select(item =>
+            {
+                var product = products[item.ProductId];
+                return new SupplyOrderItem
+                {
+                    ProductId = product.Id,
+                    ProductName = product.Name,
+                    UnitPrice = product.Price,
+                    Quantity = item.Quantity,
+                };
+            }).ToList();
+        }
+
+        entity.ClientId = request.ClientId;
+        entity.CustomerName = request.CustomerName.Trim();
+        entity.CustomerPhone = request.CustomerPhone.Trim();
+        entity.CustomerEmail = request.CustomerEmail?.Trim() ?? string.Empty;
+        entity.Address = request.Address.Trim();
+        entity.City = request.City?.Trim() ?? string.Empty;
+        entity.Notes = request.Notes?.Trim() ?? string.Empty;
+        entity.ProofImageUrl = string.IsNullOrWhiteSpace(request.ProofImageUrl) ? null : request.ProofImageUrl.Trim();
+        entity.Total = entity.Items.Sum(i => i.UnitPrice * i.Quantity);
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        return (await GetByIdAsync(id, null), null);
+    }
+
+    // Igual que deleteOrder() del frontend: si el pedido todavía apartaba
+    // stock, lo devuelve al inventario antes de borrarlo.
+    public async Task<bool> DeleteAsync(long id)
+    {
+        var entity = await _db.SupplyOrders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == id);
+        if (entity is null)
+        {
+            return false;
+        }
+
+        if (SupplyOrderStatuses.HoldingStock.Contains(entity.Status))
+        {
+            var productIds = entity.Items.Where(i => i.ProductId is not null).Select(i => i.ProductId!.Value).Distinct().ToList();
+            var products = await _db.SupplyProducts.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+            foreach (var item in entity.Items)
+            {
+                if (item.ProductId is not null && products.TryGetValue(item.ProductId.Value, out var product))
+                {
+                    product.Stock += item.Quantity;
+                }
+            }
+        }
+
+        _db.SupplyOrders.Remove(entity);
+        await _db.SaveChangesAsync();
+
+        return true;
+    }
+
     public async Task<(SupplyOrderResponse? Result, string? Error)> ConfirmAsync(long id)
     {
         var entity = await _db.SupplyOrders.FindAsync(id);
