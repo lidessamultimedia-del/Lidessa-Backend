@@ -65,6 +65,21 @@ public class SupplyOrdersController : ControllerBase
     }
 
     [Authorize(Roles = "admin")]
+    [HttpPut("{id:long}")]
+    public async Task<IActionResult> Update(long id, UpdateSupplyOrderRequest request)
+    {
+        var (result, error) = await _service.UpdateAsync(id, request);
+        return ToActionResult(result, error);
+    }
+
+    [Authorize(Roles = "admin")]
+    [HttpDelete("{id:long}")]
+    public async Task<IActionResult> Delete(long id)
+    {
+        return await _service.DeleteAsync(id) ? NoContent() : NotFound(new { message = NotFoundMessage });
+    }
+
+    [Authorize(Roles = "admin")]
     [HttpPatch("{id:long}/confirm")]
     public async Task<IActionResult> Confirm(long id)
     {
