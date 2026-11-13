@@ -9,7 +9,16 @@ API en ASP.NET Core (C#) + Entity Framework Core + SQL Server para la plataforma
 
 ## 1. Crear la base de datos
 
-Abre SQL Server Management Studio (o Azure Data Studio), conéctate a tu instancia local, y ejecuta todo el contenido de [`database/schema.sql`](database/schema.sql). Eso crea `LidessaDB` con sus 30 tablas. Si ya tenías la base creada, corre en su lugar los scripts de [`database/migrations/`](database/migrations/) que no hayas aplicado.
+Abre SQL Server Management Studio (o Azure Data Studio), conéctate a tu instancia local, y ejecuta todo el contenido de [`database/schema.sql`](database/schema.sql). Eso crea `LidessaDB` con sus 30 tablas. Si ya tenías la base creada, corre en su lugar los scripts de [`database/migrations/`](database/migrations/) que no hayas aplicado, **en orden de fecha**.
+
+> **Si usas `sqlcmd` en vez de SSMS**, pasa siempre `-f 65001 -I`:
+> ```bash
+> sqlcmd -S localhost -E -C -b -f 65001 -I -i database/migrations/2026-11-05_supplies.sql
+> ```
+> - `-f 65001`: los `.sql` están en UTF-8; sin esto `sqlcmd` los lee como ANSI y los acentos quedan dañados en la base (`BotiquÃ­n` en vez de `Botiquín`).
+> - `-I`: activa `QUOTED_IDENTIFIER`. Sin esto, cualquier `UPDATE`/`DELETE` sobre `AppUser` falla con el error 1934 (por el índice filtrado) — incluido el `UPDATE` del paso 2.2.
+>
+> Para saber si te falta Suministros: `SELECT OBJECT_ID('dbo.SupplyOrder')` debe dar un número, no `NULL`. Sin las migraciones `2026-11-05_supplies.sql` y `2026-11-10_supply_order_delivery_tokens.sql`, además, el registro de clientes falla (la restricción `CK_AppUser_Role` todavía no admite `'cliente'`).
 
 ## 2. Configurar la cadena de conexión
 
@@ -41,6 +50,11 @@ Usa cualquier cadena aleatoria de al menos 32 caracteres. Sin esto, `dotnet run`
 2. Promueve esa cuenta desde SQL Server:
    ```sql
    UPDATE LidessaDB.dbo.AppUser SET Role = 'admin' WHERE Email = 'tu-correo@ejemplo.com';
+   -- La cuenta también tiene su rol original en AppUserRole (cuentas vinculadas);
+   -- sin esto quedaría como admin + estudiante.
+   UPDATE r SET r.Role = 'admin'
+   FROM LidessaDB.dbo.AppUserRole r JOIN LidessaDB.dbo.AppUser u ON u.Id = r.UserId
+   WHERE u.Email = 'tu-correo@ejemplo.com' AND r.Role = 'estudiante';
    ```
 3. Vuelve a iniciar sesión (el rol va dentro del token). Desde ahí ese admin puede crear profesores y otros admins.
 
@@ -54,6 +68,25 @@ dotnet run
 La consola va a mostrar algo como `Now listening on: http://localhost:5144` (el puerto puede variar). Abre esa misma dirección en el navegador — Swagger carga directo ahí, mostrando todos los endpoints disponibles.
 
 Para confirmar que la conexión a la base quedó bien, prueba `GET /api/health` desde Swagger: debe responder `{"status":"ok","database":"connected"}`.
+
+## 4. Pruebas
+
+**Integración (rápidas, sin SQL Server):** levantan la API real contra una base EF InMemory.
+
+```bash
+dotnet test
+```
+
+**End-to-end contra el backend real** ([`e2e/roles-supplies.e2e.mjs`](e2e/roles-supplies.e2e.mjs)): recorre los 4 roles (admin, profesor, estudiante, cliente), una cuenta con rol doble (estudiante + cliente) y el ciclo completo de Suministros, incluida una prueba de concurrencia sobre el último stock. Requiere la API corriendo (`dotnet run`), Node 18+ y `sqlcmd` (para leer los tokens que en producción llegan por correo).
+
+```bash
+node e2e/roles-supplies.e2e.mjs          # crea sus propias cuentas/productos con prefijo e2e… y los borra al terminar
+node e2e/roles-supplies.e2e.mjs --keep   # los deja en la base para revisarlos
+```
+
+Variables opcionales: `API_URL` (default `http://localhost:5144`), `SQL_SERVER` (default `localhost`), `SQL_DB` (default `LidessaDB`). Sale con código 1 si algo falla. Úsalo solo contra tu base local: escribe y borra datos.
+
+> InMemory no es transaccional: si un `SaveChanges` choca por concurrencia, lo que iba antes en el mismo lote queda escrito. Por eso las pruebas de concurrencia de `dotnet test` solo verifican respuestas, stock y estado; que no queden pedidos huérfanos lo verifica el e2e contra SQL Server.
 
 ## Estructura del proyecto
 

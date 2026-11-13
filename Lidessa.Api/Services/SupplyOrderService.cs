@@ -34,6 +34,73 @@ public class SupplyOrderService
         _apiOptions = apiOptions.Value;
     }
 
+    // Lo que se devuelve cuando el reintento por concurrencia se agota (ver
+    // RetryOnConflictAsync). El controlador lo traduce a 409.
+    public const string ConcurrencyConflictMessage =
+        "Otra operación cambió este pedido o el inventario al mismo tiempo. Intente de nuevo.";
+
+    // Cada operación que escribe pasa por aquí: Stock (SupplyProduct) y
+    // Status (SupplyOrder) son tokens de concurrencia, así que si dos
+    // solicitudes parten del mismo dato, la segunda recibe
+    // DbUpdateConcurrencyException en vez de pisar a la primera (sin esto,
+    // 20 pedidos simultáneos por un stock de 3 se aceptaban todos). Se
+    // reintenta la operación completa desde cero con datos frescos, así que
+    // la que llega tarde vuelve a validar stock/estado y responde con el
+    // error de negocio que toque ("No hay suficiente stock", "Solo se puede
+    // confirmar un pedido pendiente", ...).
+    private const int MaxConcurrencyAttempts = 8;
+
+    private async Task<T> RetryOnConflictAsync<T>(Func<Task<T>> operation, T onGiveUp)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                _db.ChangeTracker.Clear();
+                if (attempt >= MaxConcurrencyAttempts)
+                {
+                    return onGiveUp;
+                }
+
+                // Espera corta y aleatoria para que los reintentos no vuelvan
+                // a chocar todos en el mismo instante.
+                await Task.Delay(Random.Shared.Next(5, 20) * attempt);
+            }
+        }
+    }
+
+    public Task<(SupplyOrderResponse? Result, string? Error)> CreateAsync(SupplyOrderRequest request, long? callerClientId) =>
+        RetryOnConflictAsync(() => CreateCoreAsync(request, callerClientId), ((SupplyOrderResponse?)null, (string?)ConcurrencyConflictMessage));
+
+    public Task<(SupplyOrderResponse? Result, string? Error)> UpdateAsync(long id, UpdateSupplyOrderRequest request) =>
+        RetryOnConflictAsync(() => UpdateCoreAsync(id, request), ((SupplyOrderResponse?)null, (string?)ConcurrencyConflictMessage));
+
+    // Found=false → 404; Error → 409 (conflicto de concurrencia agotado).
+    public Task<(bool Found, string? Error)> DeleteAsync(long id) =>
+        RetryOnConflictAsync(() => DeleteCoreAsync(id), (true, (string?)ConcurrencyConflictMessage));
+
+    public Task<(SupplyOrderResponse? Result, string? Error)> ConfirmAsync(long id) =>
+        RetryOnConflictAsync(() => ConfirmCoreAsync(id), ((SupplyOrderResponse?)null, (string?)ConcurrencyConflictMessage));
+
+    public Task<(SupplyOrderResponse? Result, string? Error)> RejectAsync(long id, RejectSupplyOrderRequest request) =>
+        RetryOnConflictAsync(() => RejectCoreAsync(id, request), ((SupplyOrderResponse?)null, (string?)ConcurrencyConflictMessage));
+
+    public Task<(SupplyOrderResponse? Result, string? Error)> ShipAsync(long id, ShipSupplyOrderRequest request) =>
+        RetryOnConflictAsync(() => ShipCoreAsync(id, request), ((SupplyOrderResponse?)null, (string?)ConcurrencyConflictMessage));
+
+    public Task<(SupplyOrderResponse? Result, string? Error)> RequestPaymentShortfallAsync(long id, PaymentShortfallRequest request) =>
+        RetryOnConflictAsync(() => RequestPaymentShortfallCoreAsync(id, request), ((SupplyOrderResponse?)null, (string?)ConcurrencyConflictMessage));
+
+    public Task<(SupplyOrderResponse? Result, string? Error)> CompleteAsync(long id, long? callerClientId) =>
+        RetryOnConflictAsync(() => CompleteCoreAsync(id, callerClientId), ((SupplyOrderResponse?)null, (string?)ConcurrencyConflictMessage));
+
+    public Task<(bool Success, string? Error)> ConfirmDeliveryAsync(string token) =>
+        RetryOnConflictAsync(() => ConfirmDeliveryCoreAsync(token), (false, (string?)ConcurrencyConflictMessage));
+
     public async Task<List<SupplyOrderResponse>> GetAllAsync()
     {
         return await Ordered(_db.SupplyOrders).Select(o => ToResponse(o)).ToListAsync();
@@ -69,7 +136,7 @@ public class SupplyOrderService
     // ClientStore, que siempre pasa clientId: user.id). Si es null (admin),
     // se respeta request.ClientId — puede quedar sin cuenta ("Cliente sin
     // cuenta" en OrderFormModal).
-    public async Task<(SupplyOrderResponse? Result, string? Error)> CreateAsync(SupplyOrderRequest request, long? callerClientId)
+    private async Task<(SupplyOrderResponse? Result, string? Error)> CreateCoreAsync(SupplyOrderRequest request, long? callerClientId)
     {
         if (request.Items.Count == 0)
         {
@@ -165,7 +232,7 @@ public class SupplyOrderService
     // inventario por la diferencia con los que tenía; si no vienen (el
     // pedido ya está enviado/completado/rechazado), no se tocan ni el stock
     // ni los artículos.
-    public async Task<(SupplyOrderResponse? Result, string? Error)> UpdateAsync(long id, UpdateSupplyOrderRequest request)
+    private async Task<(SupplyOrderResponse? Result, string? Error)> UpdateCoreAsync(long id, UpdateSupplyOrderRequest request)
     {
         var entity = await _db.SupplyOrders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == id);
         if (entity is null)
@@ -272,12 +339,12 @@ public class SupplyOrderService
 
     // Igual que deleteOrder() del frontend: si el pedido todavía apartaba
     // stock, lo devuelve al inventario antes de borrarlo.
-    public async Task<bool> DeleteAsync(long id)
+    private async Task<(bool Found, string? Error)> DeleteCoreAsync(long id)
     {
         var entity = await _db.SupplyOrders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == id);
         if (entity is null)
         {
-            return false;
+            return (false, null);
         }
 
         if (SupplyOrderStatuses.HoldingStock.Contains(entity.Status))
@@ -296,10 +363,10 @@ public class SupplyOrderService
         _db.SupplyOrders.Remove(entity);
         await _db.SaveChangesAsync();
 
-        return true;
+        return (true, null);
     }
 
-    public async Task<(SupplyOrderResponse? Result, string? Error)> ConfirmAsync(long id)
+    private async Task<(SupplyOrderResponse? Result, string? Error)> ConfirmCoreAsync(long id)
     {
         var entity = await _db.SupplyOrders.FindAsync(id);
         if (entity is null)
@@ -327,7 +394,7 @@ public class SupplyOrderService
         return (await GetByIdAsync(id, null), null);
     }
 
-    public async Task<(SupplyOrderResponse? Result, string? Error)> RejectAsync(long id, RejectSupplyOrderRequest request)
+    private async Task<(SupplyOrderResponse? Result, string? Error)> RejectCoreAsync(long id, RejectSupplyOrderRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Reason))
         {
@@ -377,7 +444,7 @@ public class SupplyOrderService
     // la guía y la foto del paquete para que el cliente le haga seguimiento.
     // No toca el stock: ya se descontó al crear el pedido y, desde aquí, ya
     // salió del inventario (deja de estar en HoldingStock).
-    public async Task<(SupplyOrderResponse? Result, string? Error)> ShipAsync(long id, ShipSupplyOrderRequest request)
+    private async Task<(SupplyOrderResponse? Result, string? Error)> ShipCoreAsync(long id, ShipSupplyOrderRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Carrier))
         {
@@ -437,7 +504,7 @@ public class SupplyOrderService
     // El comprobante no cubre el total: se le anota al cliente cuánto falta
     // y por qué. El pedido sigue pendiente (no se agrega al historial) y un
     // aviso nuevo reemplaza al anterior, igual que en el frontend.
-    public async Task<(SupplyOrderResponse? Result, string? Error)> RequestPaymentShortfallAsync(long id, PaymentShortfallRequest request)
+    private async Task<(SupplyOrderResponse? Result, string? Error)> RequestPaymentShortfallCoreAsync(long id, PaymentShortfallRequest request)
     {
         // request.Amount > 0 ya lo garantiza el [Range] del DTO (400
         // automático de [ApiController] antes de llegar aquí).
@@ -481,7 +548,7 @@ public class SupplyOrderService
     // también puede (callerClientId null) para cerrar pedidos walk-in sin
     // cuenta, que de otro modo se quedarían en "enviado" para siempre. Un
     // cliente que no es dueño del pedido recibe "no encontrado".
-    public async Task<(SupplyOrderResponse? Result, string? Error)> CompleteAsync(long id, long? callerClientId)
+    private async Task<(SupplyOrderResponse? Result, string? Error)> CompleteCoreAsync(long id, long? callerClientId)
     {
         var entity = await _db.SupplyOrders.FindAsync(id);
         if (entity is null || (callerClientId is not null && entity.ClientId != callerClientId))
@@ -505,7 +572,7 @@ public class SupplyOrderService
     // protegida por el token de un solo uso que ShipAsync generó. Devuelve
     // solo éxito/error (no el pedido completo) porque cualquiera con el
     // enlace llega aquí sin haber iniciado sesión.
-    public async Task<(bool Success, string? Error)> ConfirmDeliveryAsync(string token)
+    private async Task<(bool Success, string? Error)> ConfirmDeliveryCoreAsync(string token)
     {
         var deliveryToken = await _db.SupplyOrderDeliveryTokens
             .Include(t => t.Order)

@@ -16,6 +16,29 @@ public class SupplyProductService
         _db = db;
     }
 
+    // Stock es token de concurrencia (ver SupplyProductConfiguration): si un
+    // pedido aparta stock entre que se lee el producto y se guarda la
+    // edición del admin, el guardado choca. Como estas operaciones no
+    // dependen del stock que se leyó (lo fijan o no lo tocan), basta con
+    // volver a leer y aplicar de nuevo.
+    private const int MaxConcurrencyAttempts = 8;
+
+    private async Task<T> RetryOnConflictAsync<T>(Func<Task<T>> operation)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < MaxConcurrencyAttempts)
+            {
+                _db.ChangeTracker.Clear();
+                await Task.Delay(Random.Shared.Next(5, 20) * attempt);
+            }
+        }
+    }
+
     // Los más nuevos primero, igual que el frontend (addProduct los pone al
     // inicio de la lista). onlyActive = catálogo público (activeProducts).
     public async Task<List<SupplyProductResponse>> GetAllAsync(bool onlyActive)
@@ -54,7 +77,10 @@ public class SupplyProductService
         return ToResponse(entity);
     }
 
-    public async Task<SupplyProductResponse?> UpdateAsync(long id, SupplyProductRequest request)
+    public Task<SupplyProductResponse?> UpdateAsync(long id, SupplyProductRequest request) =>
+        RetryOnConflictAsync(() => UpdateCoreAsync(id, request));
+
+    private async Task<SupplyProductResponse?> UpdateCoreAsync(long id, SupplyProductRequest request)
     {
         var entity = await _db.SupplyProducts.FindAsync(id);
         if (entity is null)
@@ -69,7 +95,10 @@ public class SupplyProductService
     }
 
     // Ocultar/mostrar en el catálogo sin tener que mandar el producto completo.
-    public async Task<SupplyProductResponse?> ToggleActiveAsync(long id)
+    public Task<SupplyProductResponse?> ToggleActiveAsync(long id) =>
+        RetryOnConflictAsync(() => ToggleActiveCoreAsync(id));
+
+    private async Task<SupplyProductResponse?> ToggleActiveCoreAsync(long id)
     {
         var entity = await _db.SupplyProducts.FindAsync(id);
         if (entity is null)
@@ -88,7 +117,10 @@ public class SupplyProductService
     // guardan nombre y precio propios, y la FK queda en NULL (ON DELETE SET
     // NULL), igual que en el frontend, donde borrar un producto no altera
     // los pedidos existentes.
-    public async Task<bool> DeleteAsync(long id)
+    public Task<bool> DeleteAsync(long id) =>
+        RetryOnConflictAsync(() => DeleteCoreAsync(id));
+
+    private async Task<bool> DeleteCoreAsync(long id)
     {
         var entity = await _db.SupplyProducts.FindAsync(id);
         if (entity is null)
