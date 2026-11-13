@@ -24,7 +24,10 @@ public class SupplyOrderConfiguration : IEntityTypeConfiguration<SupplyOrder>
         b.Property(x => x.Notes).IsRequired().HasDefaultValue("");
         b.Property(x => x.Total).HasPrecision(14, 2);
         b.Property(x => x.ProofImageUrl).HasMaxLength(500);
-        b.Property(x => x.Status).HasMaxLength(20).IsRequired().HasDefaultValue(SupplyOrderStatuses.Pending);
+        // Token de concurrencia: dos transiciones simultáneas sobre el mismo
+        // pedido (p. ej. confirmar y rechazar a la vez, o dos rechazos que
+        // devolverían el stock dos veces) no pueden partir del mismo estado.
+        b.Property(x => x.Status).HasMaxLength(20).IsRequired().HasDefaultValue(SupplyOrderStatuses.Pending).IsConcurrencyToken();
         b.Property(x => x.PaymentNoteAmount).HasPrecision(14, 2);
         b.Property(x => x.ShipmentCarrier).HasMaxLength(100);
         b.Property(x => x.ShipmentTrackingNumber).HasMaxLength(100);

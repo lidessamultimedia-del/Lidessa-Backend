@@ -54,11 +54,19 @@ public class SupplyOrdersController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(SupplyOrderRequest request)
     {
-        var callerClientId = User.IsInRole("cliente") ? (long?)CurrentUserId : null;
+        // Mismo criterio que GetById/Complete: si la cuenta es admin manda el
+        // rol admin, aunque también tenga el rol cliente vinculado (ver 2.2).
+        // Antes se miraba solo "cliente", y un admin+cliente no podía crear
+        // pedidos walk-in ni a nombre de otro cliente: todos le quedaban a él.
+        // Su propia compra desde ClientStore sigue a su nombre porque la
+        // tienda manda clientId = su id.
+        var callerClientId = User.IsInRole("admin") ? null : (long?)CurrentUserId;
         var (result, error) = await _service.CreateAsync(request, callerClientId);
         if (error is not null)
         {
-            return BadRequest(new { message = error });
+            return error == SupplyOrderService.ConcurrencyConflictMessage
+                ? Conflict(new { message = error })
+                : BadRequest(new { message = error });
         }
 
         return CreatedAtAction(nameof(GetById), new { id = result!.Id }, result);
@@ -76,7 +84,13 @@ public class SupplyOrdersController : ControllerBase
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Delete(long id)
     {
-        return await _service.DeleteAsync(id) ? NoContent() : NotFound(new { message = NotFoundMessage });
+        var (found, error) = await _service.DeleteAsync(id);
+        if (error is not null)
+        {
+            return Conflict(new { message = error });
+        }
+
+        return found ? NoContent() : NotFound(new { message = NotFoundMessage });
     }
 
     [Authorize(Roles = "admin")]
@@ -131,7 +145,9 @@ public class SupplyOrdersController : ControllerBase
         var (success, error) = await _service.ConfirmDeliveryAsync(token);
         if (!success)
         {
-            return BadRequest(new { message = error });
+            return error == SupplyOrderService.ConcurrencyConflictMessage
+                ? Conflict(new { message = error })
+                : BadRequest(new { message = error });
         }
 
         return Ok(new { message = "Gracias, confirmamos que tu pedido fue entregado." });
@@ -144,6 +160,11 @@ public class SupplyOrdersController : ControllerBase
             return Ok(result);
         }
 
-        return error == NotFoundMessage ? NotFound(new { message = error }) : BadRequest(new { message = error });
+        return error switch
+        {
+            NotFoundMessage => NotFound(new { message = error }),
+            SupplyOrderService.ConcurrencyConflictMessage => Conflict(new { message = error }),
+            _ => BadRequest(new { message = error }),
+        };
     }
 }

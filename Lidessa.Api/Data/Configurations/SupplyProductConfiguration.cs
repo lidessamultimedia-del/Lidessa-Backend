@@ -20,7 +20,11 @@ public class SupplyProductConfiguration : IEntityTypeConfiguration<SupplyProduct
         b.Property(x => x.Description).IsRequired().HasDefaultValue("");
         b.Property(x => x.Price).HasPrecision(14, 2);
         b.Property(x => x.ImageUrl).HasMaxLength(500);
-        b.Property(x => x.Stock).HasDefaultValue(0);
+        // Token de concurrencia: el UPDATE lleva "WHERE Stock = @original",
+        // así dos pedidos simultáneos no pueden descontar del mismo stock
+        // leído (sobreventa). El que pierde recibe DbUpdateConcurrencyException
+        // y SupplyOrderService reintenta con el stock ya actualizado.
+        b.Property(x => x.Stock).HasDefaultValue(0).IsConcurrencyToken();
         b.Property(x => x.Active).HasDefaultValue(true);
         b.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
         b.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
