@@ -81,11 +81,20 @@ builder.Services
 builder.Services.AddAuthorization();
 
 const string FrontendCorsPolicy = "FrontendCorsPolicy";
+// Orígenes permitidos por configuración (Cors:AllowedOrigins), no hardcodeados:
+// en producción (Render) se sobrescribe con la variable de entorno
+// Cors__AllowedOrigins__0=https://lidessa.com, sin tocar código ni redesplegar.
+var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+if (corsAllowedOrigins is null || corsAllowedOrigins.Length == 0)
+{
+    corsAllowedOrigins = ["https://localhost:8443", "http://localhost:8443"];
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCorsPolicy, policy =>
     {
-        policy.WithOrigins("https://localhost:8443", "http://localhost:8443")
+        policy.WithOrigins(corsAllowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
